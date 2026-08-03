@@ -1,4 +1,9 @@
 //! Тесты скиллов: парсер SKILL.md, строгий валидатор, create_skill.
+//!
+//! Импорты используются в телах `#[test]`-функций; под целью `--lib` (где
+//! тела вырезаются) это даёт ложные unused-imports.
+
+#![allow(unused_imports)]
 
 use vpsagent_runtime::{validate_generated, Skill, SkillRegistry};
 
@@ -45,7 +50,7 @@ fn load_skills_from_directory() {
         "---\nname: nested-skill\ndescription: вложенный\n---\nделай бета",
     )
     .unwrap();
-    let reg = SkillRegistry::load_from(&[dir.clone()]);
+    let reg = SkillRegistry::load_from(std::slice::from_ref(&dir));
     assert!(
         reg.get("alpha").is_some(),
         "alpha должен загрузиться из .md"

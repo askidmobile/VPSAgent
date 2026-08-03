@@ -1,7 +1,14 @@
 //! Тесты хранилища: сессии, сообщения, события (append + replay).
+//!
+//! Импорты и хелпер `tmp_db` используются в телах `#[test]`-функций; под целью
+//! `--lib` (где тела вырезаются) это даёт ложные unused-imports/dead_code.
+
+#![allow(unused_imports)]
 
 use vpsagent_core::{ContentBlock, EventKind, Role, SessionStatus};
 use vpsagent_storage::Storage;
+
+#[allow(dead_code)]
 fn tmp_db() -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("vpsagent-test-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();

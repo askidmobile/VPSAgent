@@ -67,6 +67,7 @@ pub fn classify(text: &str, session_messages: &[Message]) -> Route {
 
 /// Главный агент — определяем как agent с role Assistant и parent_id None.
 /// В упрощении Фазы 7 — заглушка: возвращаем первый assistant-id или новый.
+#[allow(non_snake_case)]
 fn Main_id() -> Id {
     // В Фазе 7 классификатор не знает главного; возвращаем nil.
     // Реальная маршрутизация — в SessionManager.

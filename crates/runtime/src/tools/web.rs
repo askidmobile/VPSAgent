@@ -52,7 +52,6 @@ impl Tool for WebFetch {
         // Потоковое чтение с лимитом 1 МБ (не загружать весь body в память).
         let mut raw = Vec::with_capacity(1 << 20);
         let limit = 1 << 20; // 1 МБ
-        use futures::StreamExt;
         while let Ok(Some(chunk)) = resp.chunk().await {
             if raw.len() + chunk.len() > limit {
                 raw.extend_from_slice(&chunk[..limit - raw.len()]);

@@ -20,6 +20,7 @@ impl Validation {
             errors: vec![],
         }
     }
+    #[allow(dead_code)]
     fn fail(err: String) -> Self {
         Self {
             valid: false,

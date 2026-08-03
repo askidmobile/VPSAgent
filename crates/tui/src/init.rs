@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::io::stdout;
 
 use anyhow::Result;
-use crossterm::event::{Event as CrosstermEvent, EventStream, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{Event as CrosstermEvent, EventStream, KeyCode, KeyEvent};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -292,11 +292,9 @@ fn save_config(state: &InitState) -> Result<Config> {
     let mut config = Config::load().unwrap_or_default();
     let endpoint = state.build_endpoint();
     let key_ref = endpoint.api_key_ref.clone();
-    let key_value = if matches!(state.pick, Some(Pick::Custom) | Some(Pick::OauthChatGpt)) {
-        state.custom_key.clone()
-    } else {
-        state.custom_key.clone()
-    };
+    // Ключ берём из поля custom_key (для Registry оно пустое — ключ
+    // подставится из secrets по api_key_ref на этапе auth).
+    let key_value = state.custom_key.clone();
     // Обновить/добавить endpoint.
     if let Some(existing) = config
         .endpoints

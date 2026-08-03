@@ -4,6 +4,7 @@
 //!   `vpsagent`           — интерактивный TUI (attach к демону/новая сессия) [Фаза 1: упрощённый вывод]
 //!   `vpsagent daemon`    — запустить headless-демон (по умолчанию daemonize на Unix, FR-001)
 //!   `vpsagent daemon stop`    — graceful stop демона через RPC (FR-006)
+//!   `vpsagent daemon restart` — перезапустить демон: stop + запуск (FR-020)
 //!   `vpsagent daemon status`  — статус демона через RPC (FR-007)
 //!   `vpsagent run "задача"` — headless-прогон: создать сессию, отправить задачу, ждать завершения, exit code
 //!   `vpsagent attach [id]`  — подключиться к существующей сессии демона
@@ -75,6 +76,8 @@ enum DaemonCmd {
         #[arg(long, default_value = "text")]
         output_format: String,
     },
+    /// Перезапустить демон: stop + запуск (FR-020).
+    Restart,
 }
 
 fn main() -> Result<()> {
@@ -96,6 +99,21 @@ fn main() -> Result<()> {
     }) = &cli.command
     {
         return run_daemon_sync(config, *foreground, *daemonize, log_file.clone());
+    }
+
+    // FR-020: `vpsagent daemon restart` — stop текущего демона (RPC) + запуск нового.
+    // Обрабатывается ВНЕ tokio runtime (как и запуск): запуск нового демона зовёт
+    // `run_daemon_sync`, который делает fork ДО runtime — критично, чтобы child
+    // не унаследовал epoll fd родительского runtime. Stop-часть выполняется в
+    // короткоживущем runtime (RPC — асинхронный), затем отдельный синхронный запуск.
+    if let Some(Command::Daemon {
+        action: Some(DaemonCmd::Restart),
+        foreground,
+        daemonize,
+        log_file,
+    }) = &cli.command
+    {
+        return daemon_restart_sync(config, *foreground, *daemonize, log_file.clone());
     }
 
     // Все остальные команды — в tokio runtime.
@@ -138,6 +156,11 @@ fn main() -> Result<()> {
             Some(Command::Daemon { action, .. }) => match action.unwrap() {
                 DaemonCmd::Stop => daemon_stop(&config).await,
                 DaemonCmd::Status { output_format } => daemon_status(&config, &output_format).await,
+                // FR-020: restart перехвачен в синхронной main ДО runtime (нужен
+                // fork ДО epoll fd). Сюда мы не должны попасть.
+                DaemonCmd::Restart => anyhow::bail!(
+                    "restart должен обрабатываться в синхронной main до tokio runtime"
+                ),
             },
             Some(Command::Run {
                 task,
@@ -296,6 +319,99 @@ async fn daemon_stop(config: &Config) -> Result<()> {
         Ok(other) => anyhow::bail!("неожиданный ответ на DaemonStop: {other:?}"),
         Err(e) => anyhow::bail!("ошибка RPC: {e}"),
     }
+}
+
+/// `vpsagent daemon restart` (FR-020): остановить текущий демон (RPC DaemonStop)
+/// и запустить новый через тот же путь, что `vpsagent daemon` (`run_daemon_sync`).
+///
+/// Обрабатывается ВНЕ tokio runtime (как и запуск демона): запуск нового демона
+/// зовёт `run_daemon_sync`, который делает fork ДО runtime — критично, чтобы
+/// child не унаследовал epoll fd родительского runtime.
+///
+/// Stop-часть асинхронная (RPC), поэтому выполняется в короткоживущем
+/// current_thread-рантайме. Если демон не был запущен — restart всё равно
+/// стартует новый (это нормальное поведение restart, не ошибка).
+///
+/// НЕ использует `Request::DaemonRestart` RPC (заглушка D4, сложный exec-в-демоне):
+/// restart = stop + новый запуск на стороне CLI — проще и надёжнее.
+fn daemon_restart_sync(
+    config: Config,
+    foreground: bool,
+    daemonize: bool,
+    log_file: Option<PathBuf>,
+) -> Result<()> {
+    // 1. Остановить текущий демон через RPC. Короткоживущий runtime только для
+    //    stop-части; запуск нового пойдёт через run_daemon_sync (свой runtime/fork).
+    let was_running = stop_for_restart(&config);
+
+    if was_running {
+        eprintln!("демон остановлен — запускаю новый");
+    } else {
+        eprintln!("демон не был запущен — запускаю новый");
+    }
+
+    // 2. Подождать, пока сокет исчезнет (poll до 3 сек) — иначе новый демон
+    //    споткнётся о занятый сокет/lock. Если демон не был запущен, сокета
+    //    уже нет (или это мусорный файл — run_daemon_sync/сервер почистят).
+    wait_socket_gone(&config.paths.socket, std::time::Duration::from_secs(3));
+
+    // 3. Запуск нового демона тем же путём, что `vpsagent daemon`.
+    run_daemon_sync(config, foreground, daemonize, log_file)
+}
+
+/// Остановить демон через RPC для restart. Возвращает true, если демон был
+/// запущен и мы послали ему DaemonStop; false — если демона не было (сокет
+/// недоступен). В последнем случае restart просто стартует новый демон.
+fn stop_for_restart(config: &Config) -> bool {
+    let rt = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(rt) => rt,
+        Err(e) => {
+            // Без runtime мы не сможем послать RPC; но restart не должен падать
+            // только из-за этого — считаем, что останавливать некого, и идём
+            // запускать новый демон (run_daemon_sync создаст свой runtime).
+            tracing::warn!(error=?e, "не удалось создать runtime для stop-части restart");
+            return false;
+        }
+    };
+    rt.block_on(async {
+        let client = match RpcClient::connect(&config.paths.socket).await {
+            Ok(c) => c,
+            // Демон не запущен — restart стартует новый (не ошибка).
+            Err(_) => return false,
+        };
+        match client.request(&Request::DaemonStop, &mut |_| {}).await {
+            Ok(Response::Ok) => true,
+            // Демон ответил чем-то странным — всё равно пробуем стартовать новый.
+            Ok(other) => {
+                tracing::warn!(?other, "неожиданный ответ на DaemonStop при restart");
+                true
+            }
+            Err(e) => {
+                tracing::warn!(error=?e, "RPC DaemonStop при restart не удался");
+                // Если RPC не дошёл/упал, демон мог и не остановиться. Но мы всё
+                // равно пробуем запуск: если сокет/lock занят, run_daemon_sync
+                // сообщит об ошибке — пользователь увидит.
+                false
+            }
+        }
+    })
+}
+
+/// Подождать, пока файл сокета исчезнет (poll 100 мс). Возвращает true, если
+/// сокет исчез за `timeout`; false — если всё ещё на месте (не фатально:
+/// новый демон при запуске сам удалит занятый сокет, если он мусорный).
+fn wait_socket_gone(socket: &std::path::Path, timeout: std::time::Duration) -> bool {
+    let started = std::time::Instant::now();
+    while socket.exists() {
+        if started.elapsed() >= timeout {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    true
 }
 
 /// `vpsagent daemon status` (FR-007): статус демона, text/json (FR-012).

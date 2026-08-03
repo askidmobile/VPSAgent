@@ -12,9 +12,7 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
-use vpsagent_core::{
-    AgentInfo, AgentKind, AgentStatus, Config, ContentBlock, EventKind, Id, TokenUsage,
-};
+use vpsagent_core::{AgentInfo, AgentKind, AgentStatus, Config, EventKind, Id, TokenUsage};
 use vpsagent_providers::Provider;
 use vpsagent_storage::Storage;
 
@@ -135,6 +133,7 @@ impl SubagentManager {
     }
 
     /// Спавн субагента из определения.
+    #[allow(clippy::too_many_arguments)]
     pub async fn spawn(
         &self,
         session_id: Id,

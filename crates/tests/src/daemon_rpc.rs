@@ -1,16 +1,25 @@
 //! Тесты демона: singleton-lock и RPC клиент-сервер на Unix-сокете.
+//!
+//! Импорты и хелперы используются в телах `#[test]`-функций; под целью `--lib`
+//! (где `cfg(test)=false` и тела вырезаются) это даёт ложные unused-imports.
+//! `#[allow(...)]` подавляет их, не влияя на `--tests`.
+
+#![allow(unused_imports)]
 
 use std::sync::Arc;
 
 use vpsagent_core::{Config, Request, Response};
-use vpsagent_daemon::{DaemonLock, EventBus, RpcClient, RpcServer, SessionManager};
+use vpsagent_daemon::{DaemonLock, EventBus, RpcServer, SessionManager};
 use vpsagent_storage::Storage;
+
+#[allow(dead_code)]
 fn tmp_socket_path() -> std::path::PathBuf {
     // Unix-сокет лимит ~104 символа; temp_dir на macOS длинный.
     // Используем /tmp с коротким именем.
     std::path::PathBuf::from(format!("/tmp/vp-{}.sock", short_id()))
 }
 
+#[allow(dead_code)]
 fn short_id() -> String {
     use std::time::SystemTime;
     let nanos = SystemTime::now()
@@ -20,6 +29,7 @@ fn short_id() -> String {
     format!("{nanos:x}")
 }
 
+#[allow(dead_code)]
 fn tmp_db_path() -> std::path::PathBuf {
     let dir = std::path::PathBuf::from(format!("/tmp/vp-{}", short_id()));
     std::fs::create_dir_all(&dir).unwrap();

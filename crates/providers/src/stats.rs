@@ -39,11 +39,7 @@ impl ModelStats {
     }
 
     fn avg_duration_ms(&self) -> u64 {
-        if self.runs == 0 {
-            0
-        } else {
-            self.total_duration_ms / self.runs
-        }
+        self.total_duration_ms.checked_div(self.runs).unwrap_or(0)
     }
 
     fn pass_rate(&self) -> f32 {

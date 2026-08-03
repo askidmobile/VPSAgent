@@ -1,8 +1,14 @@
 //! Тесты Фазы 8: компактификация, rewind, hooks.
+//!
+//! Импорты и хелпер `msg` используются в телах `#[test]`-функций; под целью
+//! `--lib` (где тела вырезаются) это даёт ложные unused-imports/dead_code.
+
+#![allow(unused_imports)]
 
 use vpsagent_core::{ContentBlock, Message, Role};
 use vpsagent_runtime::{compact, estimate_tokens, HookEvent, Hooks, RewindStore};
 
+#[allow(dead_code)]
 fn msg(text: &str) -> Message {
     Message {
         id: uuid::Uuid::new_v4(),

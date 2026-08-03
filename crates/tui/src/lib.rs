@@ -90,10 +90,12 @@ pub async fn run(config: &Config, cwd: &str) -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::default();
-    app.session = Some(session.clone());
-    app.attached = true;
-    app.status = format!("сессия {} создана. Введите задачу.", session.id);
+    let mut app = App {
+        session: Some(session.clone()),
+        attached: true,
+        status: format!("сессия {} создана. Введите задачу.", session.id),
+        ..Default::default()
+    };
 
     let result = main_loop(&mut terminal, &client, &mut event_rx, &mut app, &socket).await;
 
@@ -136,100 +138,98 @@ async fn handle_key(
     client: &Arc<RpcClient>,
     socket: &Path,
 ) -> Result<bool> {
-    match ev {
-        CrosstermEvent::Key(KeyEvent {
-            code, modifiers, ..
-        }) => {
-            // Диалог подтверждения разрешения: перехватывает y/n.
-            if app.pending_permission.is_some() {
-                match code {
-                    KeyCode::Char('y')
-                    | KeyCode::Char('Y')
-                    | KeyCode::Char('n')
-                    | KeyCode::Char('N') => {
-                        let allowed = matches!(code, KeyCode::Char('y') | KeyCode::Char('Y'));
-                        if let Some(p) = app.pending_permission.take() {
-                            client
-                                .send(&Request::PermissionAnswer {
-                                    call_id: p.call_id,
-                                    allowed,
-                                })
-                                .await?;
-                            app.status = if allowed {
-                                format!("разрешено: {}", p.name)
-                            } else {
-                                format!("запрещено: {}", p.name)
-                            };
-                        }
-                        return Ok(true);
-                    }
-                    _ => return Ok(true),
-                }
-            }
-            match (code, modifiers) {
-                (KeyCode::Char('c'), KeyModifiers::CONTROL) => return Ok(false),
-                (KeyCode::Char('d'), KeyModifiers::CONTROL) => return Ok(false),
-                (KeyCode::Enter, _) => {
-                    if let Some((session_id, text)) = app.submit_input() {
-                        app.agent_text
-                            .push_str(&format!("\n\n--- ты ---\n{text}\n"));
+    if let CrosstermEvent::Key(KeyEvent {
+        code, modifiers, ..
+    }) = ev
+    {
+        // Диалог подтверждения разрешения: перехватывает y/n.
+        if app.pending_permission.is_some() {
+            match code {
+                KeyCode::Char('y')
+                | KeyCode::Char('Y')
+                | KeyCode::Char('n')
+                | KeyCode::Char('N') => {
+                    let allowed = matches!(code, KeyCode::Char('y') | KeyCode::Char('Y'));
+                    if let Some(p) = app.pending_permission.take() {
                         client
-                            .send(&Request::MessageSend {
-                                session_id,
-                                text,
-                                target: None,
+                            .send(&Request::PermissionAnswer {
+                                call_id: p.call_id,
+                                allowed,
                             })
                             .await?;
-                        app.status = "отправлено, ожидаю ответ…".into();
-                    }
-                }
-                (KeyCode::Char(c), _) => app.input.push(c),
-                (KeyCode::Backspace, _) => {
-                    app.input.pop();
-                }
-                (KeyCode::Up, _) => {
-                    if let Some(last) = app.input_history.last() {
-                        app.input = last.clone();
-                    }
-                }
-                (KeyCode::Tab, _) => {
-                    // Переключение выбранного агента в deck.
-                    if !app.agents.is_empty() {
-                        let idx = app
-                            .agents
-                            .iter()
-                            .position(|a| Some(a.id) == app.selected_agent)
-                            .map(|i| (i + 1) % app.agents.len())
-                            .unwrap_or(0);
-                        let id = app.agents[idx].id;
-                        app.select_agent(Some(id));
-                        app.status = format!("выбран агент: {}", app.agents[idx].name);
-                    }
-                }
-                (KeyCode::F(1), _) => {
-                    // Обновить список агентов с демона.
-                    // Отдельное одноразовое подключение: основной read-half
-                    // занят фоновой задачей drain_events.
-                    if let Some(s) = &app.session {
-                        let sid = s.id;
-                        let agents = match RpcClient::connect(socket).await {
-                            Ok(one_shot) => match one_shot
-                                .request(&Request::AgentList { session_id: sid }, &mut |_| {})
-                                .await
-                            {
-                                Ok(Response::AgentList(a)) => a,
-                                _ => vec![],
-                            },
-                            Err(_) => vec![],
+                        app.status = if allowed {
+                            format!("разрешено: {}", p.name)
+                        } else {
+                            format!("запрещено: {}", p.name)
                         };
-                        app.agents = agents;
-                        app.status = format!("обновлён список: {} агентов", app.agents.len());
                     }
+                    return Ok(true);
                 }
-                _ => {}
+                _ => return Ok(true),
             }
         }
-        _ => {}
+        match (code, modifiers) {
+            (KeyCode::Char('c'), KeyModifiers::CONTROL) => return Ok(false),
+            (KeyCode::Char('d'), KeyModifiers::CONTROL) => return Ok(false),
+            (KeyCode::Enter, _) => {
+                if let Some((session_id, text)) = app.submit_input() {
+                    app.agent_text
+                        .push_str(&format!("\n\n--- ты ---\n{text}\n"));
+                    client
+                        .send(&Request::MessageSend {
+                            session_id,
+                            text,
+                            target: None,
+                        })
+                        .await?;
+                    app.status = "отправлено, ожидаю ответ…".into();
+                }
+            }
+            (KeyCode::Char(c), _) => app.input.push(c),
+            (KeyCode::Backspace, _) => {
+                app.input.pop();
+            }
+            (KeyCode::Up, _) => {
+                if let Some(last) = app.input_history.last() {
+                    app.input = last.clone();
+                }
+            }
+            (KeyCode::Tab, _) => {
+                // Переключение выбранного агента в deck.
+                if !app.agents.is_empty() {
+                    let idx = app
+                        .agents
+                        .iter()
+                        .position(|a| Some(a.id) == app.selected_agent)
+                        .map(|i| (i + 1) % app.agents.len())
+                        .unwrap_or(0);
+                    let id = app.agents[idx].id;
+                    app.select_agent(Some(id));
+                    app.status = format!("выбран агент: {}", app.agents[idx].name);
+                }
+            }
+            (KeyCode::F(1), _) => {
+                // Обновить список агентов с демона.
+                // Отдельное одноразовое подключение: основной read-half
+                // занят фоновой задачей drain_events.
+                if let Some(s) = &app.session {
+                    let sid = s.id;
+                    let agents = match RpcClient::connect(socket).await {
+                        Ok(one_shot) => match one_shot
+                            .request(&Request::AgentList { session_id: sid }, &mut |_| {})
+                            .await
+                        {
+                            Ok(Response::AgentList(a)) => a,
+                            _ => vec![],
+                        },
+                        Err(_) => vec![],
+                    };
+                    app.agents = agents;
+                    app.status = format!("обновлён список: {} агентов", app.agents.len());
+                }
+            }
+            _ => {}
+        }
     }
     Ok(true)
 }

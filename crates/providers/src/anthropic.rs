@@ -249,13 +249,11 @@ impl Provider for Anthropic {
                         }
                     };
                     match parsed {
-                        AnthropicEvent::MessageStart { message } => {
+                        AnthropicEvent::MessageStart { message: Some(m) } => {
                             // C9: input_tokens приходят один раз в message_start.
-                            if let Some(m) = message {
-                                if let Some(u) = m.usage {
-                                    usage.input = u.input_tokens.unwrap_or(usage.input);
-                                    usage.output = u.output_tokens.unwrap_or(usage.output);
-                                }
+                            if let Some(u) = m.usage {
+                                usage.input = u.input_tokens.unwrap_or(usage.input);
+                                usage.output = u.output_tokens.unwrap_or(usage.output);
                             }
                         }
                         AnthropicEvent::ContentBlockDelta { delta } => {
@@ -273,19 +271,12 @@ impl Provider for Anthropic {
                                 | AnthropicDelta::Other => {}
                             }
                         }
-                        AnthropicEvent::ContentBlockStart { block } => {
-                            match block {
-                                AnthropicContentBlock::ToolUse {
-                                    id,
-                                    name,
-                                    ..
-                                } => {
-                                    current_tool_id = Some(id);
-                                    current_tool_name = name;
-                                    current_tool_input.clear();
-                                }
-                                _ => {}
-                            }
+                        AnthropicEvent::ContentBlockStart {
+                            block: AnthropicContentBlock::ToolUse { id, name, .. },
+                        } => {
+                            current_tool_id = Some(id);
+                            current_tool_name = name;
+                            current_tool_input.clear();
                         }
                         AnthropicEvent::ContentBlockStop {} => {
                             if let Some(id) = current_tool_id.take() {
@@ -300,15 +291,13 @@ impl Provider for Anthropic {
                                 current_tool_input.clear();
                             }
                         }
-                        AnthropicEvent::MessageDelta { usage: u } => {
-                            if let Some(u) = u {
-                                // C9: message_delta шлёт КУМУЛЯТИВНЫЕ счётчики —
-                                // присваиваем, а не += (иначе квадратичный рост).
-                                usage.input = u.input_tokens.unwrap_or(usage.input);
-                                usage.output = u.output_tokens.unwrap_or(usage.output);
-                                yielded_any = true;
-                                yield StreamChunk::Usage(usage);
-                            }
+                        AnthropicEvent::MessageDelta { usage: Some(u) } => {
+                            // C9: message_delta шлёт КУМУЛЯТИВНЫЕ счётчики —
+                            // присваиваем, а не += (иначе квадратичный рост).
+                            usage.input = u.input_tokens.unwrap_or(usage.input);
+                            usage.output = u.output_tokens.unwrap_or(usage.output);
+                            yielded_any = true;
+                            yield StreamChunk::Usage(usage);
                         }
                         AnthropicEvent::MessageStop {} => {
                             done = true;
@@ -361,12 +350,19 @@ enum AnthropicEvent {
 #[serde(tag = "type")]
 enum AnthropicContentBlock {
     #[serde(rename = "text")]
-    Text { text: String },
+    Text {
+        // Поле десериализуется из API Anthropic, но не читается в коде
+        // (текстовые блоки в ContentBlockStart нам не нужны).
+        #[allow(dead_code)]
+        text: String,
+    },
     #[serde(rename = "tool_use")]
     ToolUse {
         id: String,
         name: String,
         #[serde(default)]
+        // Поле десериализуется, но парсится из отдельного InputJsonDelta-стрима.
+        #[allow(dead_code)]
         input: Value,
     },
     #[serde(rename = "tool_result")]

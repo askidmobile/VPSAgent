@@ -2,6 +2,11 @@
 //!
 //! Покрывают: определение субагента (markdown+frontmatter), SubagentManager
 //! (спавн, task-инструмент), агентный цикл с tool-call.
+//!
+//! Импорты и хелпер `tmp_db` используются в телах `#[test]`-функций; под целью
+//! `--lib` (где тела вырезаются) это даёт ложные unused-imports/dead_code.
+
+#![allow(unused_imports)]
 
 use std::sync::Arc;
 
@@ -12,6 +17,7 @@ use vpsagent_providers::{MockProvider, MockStep};
 use vpsagent_runtime::{run_agent, AgentDefinition, AgentParams, Permissions, SubagentManager};
 use vpsagent_storage::Storage;
 
+#[allow(dead_code)]
 fn tmp_db() -> std::path::PathBuf {
     std::path::PathBuf::from(format!(
         "/tmp/vp-rt-{}.db",
@@ -140,7 +146,7 @@ async fn spawn_subagent_with_task_tool() {
     .unwrap();
     // Регистрируем в менеджере (загружаем вручную из каталога).
     // SubagentManager загружает дефолтные каталоги; для теста — подменим через load_from.
-    let mut registry = vpsagent_runtime::DefinitionRegistry::load_from(&[def_dir.clone()]);
+    let registry = vpsagent_runtime::DefinitionRegistry::load_from(std::slice::from_ref(&def_dir));
     assert!(!registry.defs.is_empty(), "должно быть определение");
     let _ = registry.get("code-reviewer").expect("code-reviewer найден");
 

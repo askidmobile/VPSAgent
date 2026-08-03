@@ -145,8 +145,7 @@ fn apply_unified_diff(content: &str, _patch: &str) -> anyhow::Result<Option<Stri
         // Строки diff'а (внутри hunk).
         if line.starts_with('-') || line.starts_with('+') {
             // Нашли изменение. Простейшая стратегия: ищем удаляемую строку в оставшемся контенте.
-            if line.starts_with('-') {
-                let to_remove = &line[1..];
+            if let Some(to_remove) = line.strip_prefix('-') {
                 // Ищем в исходнике, начиная с i (но diff-строки не совпадают с контентом 1:1).
                 // Упрощённая реализация: применяем к уже накопленному result, ища to_remove.
                 if let Some(pos) = find_line(&result, to_remove) {
@@ -158,8 +157,7 @@ fn apply_unified_diff(content: &str, _patch: &str) -> anyhow::Result<Option<Stri
                     }
                     applied = true;
                 }
-            } else if line.starts_with('+') {
-                let to_add = &line[1..];
+            } else if let Some(to_add) = line.strip_prefix('+') {
                 // Вставляем в конец (упрощение).
                 if !result.is_empty() && !result.ends_with('\n') {
                     result.push('\n');

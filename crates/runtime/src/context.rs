@@ -30,7 +30,7 @@ pub fn system_prompt(cwd: &Path) -> String {
 
     let mem = memory::collect_memory(cwd);
     if !mem.is_empty() {
-        prompt.push_str("\n");
+        prompt.push('\n');
         prompt.push_str(&mem);
         prompt.push('\n');
     }

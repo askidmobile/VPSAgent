@@ -51,7 +51,7 @@ pub fn endpoint_for_model<'a>(
 
 use futures::Stream;
 use serde_json::Value;
-use vpsagent_core::{ContentBlock, Error, Message, Result, Role, TokenUsage};
+use vpsagent_core::{Error, Message, Result, TokenUsage};
 
 /// Запрос к провайдеру: история + системный промпт + инструменты.
 ///

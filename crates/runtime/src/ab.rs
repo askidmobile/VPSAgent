@@ -39,6 +39,8 @@ pub struct AbResult {
 /// A/B-раннер (in-memory; персистентность — в storage позже).
 #[derive(Clone)]
 pub struct AbRunner {
+    // Зарезервировано для будущей персистентности метрик в SQLite.
+    #[allow(dead_code)]
     storage: Storage,
     pub stats: Arc<tokio::sync::Mutex<ModelStatsRegistry>>,
 }

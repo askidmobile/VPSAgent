@@ -241,39 +241,34 @@ impl Provider for OpenaiResponses {
                             yielded_any = true;
                             yield StreamChunk::TextDelta(delta);
                         }
-                        ResponsesEvent::ResponseFunctionCallArgumentsDelta { item_id, delta } => {
+                        ResponsesEvent::ResponseFunctionCallArgumentsDelta { item_id: Some(id), delta } => {
                             // Копим delta-чанки аргументов по item_id (C8).
-                            if let Some(id) = item_id {
-                                args_by_item.entry(id).or_default().push_str(&delta);
-                            }
+                            args_by_item.entry(id).or_default().push_str(&delta);
                         }
-                        ResponsesEvent::ResponseOutputItemDone { item } => {
+                        ResponsesEvent::ResponseOutputItemDone { item: Some(ItemDone::FunctionCall { id, call_id, name, arguments }) } => {
                             // Завершён function_call → выдаём ToolCall.
-                            if let Some(ItemDone::FunctionCall { id, call_id, name, arguments }) = item {
-                                // C8: output_item.done несёт ПОЛНЫЕ arguments —
-                                // берём как есть, НЕ конкатенируем с delta-буфером.
-                                // Fallback на буфер — если arguments пусты.
-                                let args = if arguments.is_empty() {
-                                    args_by_item.remove(&id).unwrap_or_default()
-                                } else {
-                                    args_by_item.remove(&id);
-                                    arguments
-                                };
-                                let input: Value = serde_json::from_str(&args).unwrap_or(Value::Null);
-                                // call_id — идентификатор для function_call_output; id — fallback.
-                                yielded_any = true;
-                                yield StreamChunk::ToolCall {
-                                    id: call_id.unwrap_or(id),
-                                    name,
-                                    input,
-                                };
-                            }
+                            // C8: output_item.done несёт ПОЛНЫЕ arguments —
+                            // берём как есть, НЕ конкатенируем с delta-буфером.
+                            // Fallback на буфер — если arguments пусты.
+                            let args = if arguments.is_empty() {
+                                args_by_item.remove(&id).unwrap_or_default()
+                            } else {
+                                args_by_item.remove(&id);
+                                arguments
+                            };
+                            let input: Value = serde_json::from_str(&args).unwrap_or(Value::Null);
+                            // call_id — идентификатор для function_call_output; id — fallback.
+                            yielded_any = true;
+                            yield StreamChunk::ToolCall {
+                                id: call_id.unwrap_or(id),
+                                name,
+                                input,
+                            };
                         }
                         ResponsesEvent::ResponseCompleted { response } => {
                             // Usage из финального события (M).
                             if let Some(r) = response {
                                 if let Some(u) = r.usage {
-                                    yielded_any = true;
                                     yield StreamChunk::Usage(TokenUsage {
                                         input: u.input_tokens.unwrap_or(0),
                                         output: u.output_tokens.unwrap_or(0),

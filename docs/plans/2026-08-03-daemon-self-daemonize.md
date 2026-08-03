@@ -248,20 +248,24 @@ Command::Daemon  →  enum DaemonCmd
       существующими конфигами — без `log_file`)
 
 ### Фаза 2: Демон — daemonize + DaemonStop (оценка: 2.5 ч)
-- [ ] 2.1 → `crates/daemon/src/daemonize.rs` — новый модуль: `pub fn
-      daemonize(log_file: &Path) -> Result<()>`, Unix-only (`#[cfg(unix)]` тело);
-      не-Unix заглушка `Ok(())`. setsid + freopen stdio + chdir? + SIGHUP-ignore.
-- [ ] 2.2 → `crates/daemon/src/lib.rs` — `pub mod daemonize;`; расширить
-      shutdown-`select!` в `run()`: добавить SIGHUP (игнор) и внутренний канал
-      `stop_rx` (oneshot/Notify) от обработчика `DaemonStop`.
-- [ ] 2.3 → `crates/daemon/src/server.rs` — обработчик `Request::DaemonStop`:
-      ответить `Ok`, инициировать `stop_rx` (graceful shutdown). Убедиться, что
-      `Ok` уходит **до** shutdown-цикла (клиент получает подтверждение).
-- [ ] 2.4 → `crates/daemon/Cargo.toml` — добавить `signal-hook = "0.3"` (если
-      `tokio::signal::unix` не покрывает SIGHUP-игнорирование).
-- [ ] 2.5 → `cargo build -p vpsagent-daemon` — компилируется на Unix; smoke:
-      `vpsagent daemon --foreground` (Ctrl+C → clean shutdown), затем
-      `DaemonStop` через клиент.
+- [x] 2.1 → `crates/daemon/src/daemonize.rs` — новый модуль: `pub fn
+      daemonize(log_file: &Path) -> Result<Daemonize>`, Unix-only (`#[cfg(unix)]`
+      тело); не-Unix возвращает `Unsupported`. fork + setsid + dup2(stdio→log) +
+      SIGHUP-игнор (SIG_IGN). **Отклонение:** вместо `freopen` использован `dup2`
+      (portable, без зависимости от `FILE*` libc-crate).
+- [x] 2.2 → `crates/daemon/src/lib.rs` — `pub mod daemonize;`; в `run()` добавлен
+      `CancellationToken` (передан в `RpcServer`), shutdown-`select!` ловит
+      ctrl_c + SIGTERM + `token.cancelled()`. SIGHUP игнорируется в `daemonize`.
+- [x] 2.3 → `crates/daemon/src/server.rs` — `RpcServer::shutdown: CancellationToken`;
+      обработчик `DaemonStop`: spawn(sleep 150мс + cancel), возвращает `Ok` ДО
+      shutdown-цикла (FR-006).
+- [x] 2.4 → `crates/daemon/Cargo.toml` — добавлен `libc = "0.2"` (вместо
+      `signal-hook`): fork/setsid/dup2/signal — всё через libc. `shutdown.rs` не
+      понадобился — обошлись `CancellationToken` в `lib.rs`.
+- [x] 2.5 → `cargo build` — компилируется; smoke: `vpsagent daemon` foreground +
+      SIGTERM → graceful shutdown (лог «останавливаем демон»/«демон остановлен»),
+      сокет и lock очищены, exit 0. `DaemonStop` через клиент — Фаза 3 (CLI `stop`).
+      Unit-тест `Daemonize`-enum в `daemonize.rs`.
 
 ### Фаза 3: CLI — группа `vpsagent daemon` (оценка: 2 ч)
 - [ ] 3.1 → `crates/vpsagent/src/main.rs` — `Command::Daemon` → clap-группа с

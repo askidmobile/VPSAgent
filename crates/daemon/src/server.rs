@@ -10,6 +10,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 use vpsagent_core::{DaemonStatus, Event, Id, JsonRpc, Request, Response};
 use vpsagent_storage::Storage;
 
@@ -23,16 +24,27 @@ pub struct RpcServer {
     bus: EventBus,
     started_at: std::time::Instant,
     pid: u32,
+    /// Токен graceful shutdown: отменяется сигналом (SIGINT/SIGTERM) или
+    /// RPC-командой DaemonStop (FR-006). Владеем shared-копией, чтобы из
+    /// обработчика `DaemonStop` запустить shutdown-путь.
+    shutdown: CancellationToken,
 }
 
 impl RpcServer {
-    pub fn new(manager: SessionManager, storage: Storage, bus: EventBus, pid: u32) -> Self {
+    pub fn new(
+        manager: SessionManager,
+        storage: Storage,
+        bus: EventBus,
+        pid: u32,
+        shutdown: CancellationToken,
+    ) -> Self {
         Self {
             manager,
             storage,
             bus,
             started_at: std::time::Instant::now(),
             pid,
+            shutdown,
         }
     }
 
@@ -320,11 +332,16 @@ impl RpcServer {
                 Response::Ok
             }
             Request::DaemonStop => {
-                // FR-006: graceful stop через сокет. Полная реализация (запуск
-                // shutdown-цикла через внутренний канал) — Фаза 2, задача 2.3.
-                // TODO(phase-2): инициировать manager.shutdown_all() + закрытие сокета,
-                // ответить Ok ДО shutdown (клиент должен получить подтверждение).
-                tracing::info!("запрошен graceful stop демона (заглушка до Фазы 2)");
+                // FR-006: graceful stop через сокет. Отвечаем Ok ДО запуска
+                // shutdown — клиент должен получить подтверждение, затем соединение
+                // закроется по shutdown-циклу в `run()`. Небольшая задержка даёт
+                // времени на запись/доставку ответа перед отменой сервера.
+                tracing::info!("запрошен graceful stop демона (RPC)");
+                let shutdown = self.shutdown.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                    shutdown.cancel();
+                });
                 Response::Ok
             }
         }

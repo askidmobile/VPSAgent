@@ -5,22 +5,29 @@
 
 pub mod broadcast;
 pub mod client;
+pub mod daemonize;
 pub mod lock;
 pub mod session_manager;
 pub mod server;
 
 pub use broadcast::EventBus;
 pub use client::RpcClient;
+pub use daemonize::Daemonize;
 pub use lock::DaemonLock;
 pub use session_manager::SessionManager;
 pub use server::RpcServer;
 
 use std::sync::Arc;
 
+use tokio_util::sync::CancellationToken;
 use vpsagent_core::{Config, Result};
 use vpsagent_storage::Storage;
 
 /// Запустить демон (блокирует). Вызывается из бинаря `vpsagent daemon`.
+///
+/// Сама `run` НЕ делает daemonize — это обязанность caller'а (бинаря), чтобы
+/// разделить «отсоединение от терминала» (daemonize) и «работа демона» (run).
+/// Бинарь вызывает [`crate::daemonize::daemonize`] перед `run` при необходимости.
 pub async fn run(config: Config) -> Result<()> {
     let socket_path = config.paths.socket.clone();
     // 1. Singleton-lock.
@@ -48,14 +55,25 @@ pub async fn run(config: Config) -> Result<()> {
     let bus = EventBus::new();
     let manager = SessionManager::new(storage.clone(), config.clone(), bus.clone());
 
-    // 4. RPC-сервер.
-    let server = Arc::new(RpcServer::new(manager.clone(), storage, bus, lock.pid()));
+    // 4. Shutdown-токен: SIGINT/SIGTERM и RPC-команда DaemonStop (FR-006) отменяют
+    //    его, запуская единый graceful shutdown-путь.
+    let shutdown = CancellationToken::new();
 
-    // H24: graceful shutdown по SIGINT/SIGTERM.
+    // 5. RPC-сервер.
+    let server = Arc::new(RpcServer::new(
+        manager.clone(),
+        storage,
+        bus,
+        lock.pid(),
+        shutdown.clone(),
+    ));
+
+    // H24: graceful shutdown по SIGINT/SIGTERM или RPC DaemonStop.
     #[cfg(unix)]
-    let shutdown = async {
+    let shutdown_signal = async {
         use tokio::signal::unix::{signal, SignalKind};
         let mut term = signal(SignalKind::terminate()).expect("SIGTERM handler");
+        // SIGHUP игнорируется на уровне daemonize (SIG_IGN); здесь его не ловим.
         tokio::select! {
             res = tokio::signal::ctrl_c() => {
                 if let Err(e) = res {
@@ -63,19 +81,28 @@ pub async fn run(config: Config) -> Result<()> {
                 }
             }
             _ = term.recv() => {}
+            _ = shutdown.cancelled() => {
+                tracing::info!("получен RPC-запрос DaemonStop");
+            }
         }
     };
     #[cfg(not(unix))]
-    let shutdown = async {
-        let _ = tokio::signal::ctrl_c().await;
+    let shutdown_signal = async {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = shutdown.cancelled() => {
+                tracing::info!("получен RPC-запрос DaemonStop");
+            }
+        }
     };
 
     tokio::select! {
         res = server.serve(&socket_path) => {
             res.map_err(vpsagent_core::Error::Other)?;
         }
-        _ = shutdown => {
-            tracing::info!("получен сигнал завершения: останавливаем демон");
+        _ = shutdown_signal => {
+            tracing::info!("останавливаем демон");
+            shutdown.cancel();
         }
     }
 

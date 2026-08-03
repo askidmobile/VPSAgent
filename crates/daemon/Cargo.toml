@@ -15,6 +15,7 @@ tokio.workspace = true
 tokio-util = { version = "0.7", features = ["rt"] }
 tracing.workspace = true
 futures.workspace = true
+libc = "0.2"
 vpsagent-core = { path = "../core" }
 vpsagent-storage = { path = "../storage" }
 vpsagent-providers = { path = "../providers" }

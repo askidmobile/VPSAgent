@@ -1,0 +1,15 @@
+[package]
+name = "vpsagent-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+toml = "0.8"
+dirs.workspace = true

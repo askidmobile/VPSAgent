@@ -1,0 +1,18 @@
+[package]
+name = "vpsagent-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+tokio.workspace = true
+tokio-rusqlite.workspace = true
+rusqlite.workspace = true
+tracing.workspace = true
+vpsagent-core = { path = "../core" }

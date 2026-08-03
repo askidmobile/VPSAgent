@@ -1,0 +1,45 @@
+# Пример конфигурации VPSAgent (~/.vpsagent/config.toml)
+#
+# Поддерживаются три типа провайдеров (endpoint.kind):
+#   openai_compat   — любой OpenAI-совместимый Chat Completions API
+#                     (OpenRouter, OmniRoute, vLLM, llama.cpp, локальные серверы)
+#   openai_responses — нативные модели GPT (OpenAI Responses API: gpt-5, gpt-4.1)
+#   anthropic       — Anthropic Messages API (claude-*)
+
+endpoints = [
+  # 1. Нативные GPT через OpenAI Responses API
+  { name = "openai", kind = "openai_responses",
+    base_url = "https://api.openai.com/v1",
+    api_key_ref = "openai",
+    models = ["gpt-5", "gpt-4.1", "gpt-4.1-mini"] },
+
+  # 2. Claude через Anthropic Messages API
+  { name = "anthropic", kind = "anthropic",
+    base_url = "https://api.anthropic.com",
+    api_key_ref = "anthropic",
+    models = ["claude-sonnet-4-5", "claude-haiku-4-5"] },
+
+  # 3. OmniRoute как OpenAI-compat прокси (роутер поверх многих моделей)
+  { name = "omniroute", kind = "openai_compat",
+    base_url = "https://omniroute.example.com/v1",
+    api_key_ref = "omniroute",
+    models = ["omniroute/code", "omniroute/cheap"] },
+
+  # 4. OpenRouter (агрегатор моделей, OpenAI-compat)
+  { name = "openrouter", kind = "openai_compat",
+    base_url = "https://openrouter.ai/api/v1",
+    api_key_ref = "openrouter",
+    models = ["qwen/qwen3-coder", "deepseek/deepseek-coder"] },
+
+  # 5. Локальный vLLM / llama.cpp (OpenAI-compat, без ключа)
+  { name = "local", kind = "openai_compat",
+    base_url = "http://localhost:8000/v1",
+    api_key_ref = "local",
+    models = ["qwen2.5-coder-32b"] },
+]
+
+# Модель по умолчанию (для главного агента новой сессии).
+default_model = "gpt-4.1-mini"
+
+# Режим прав: default | accept_edits | plan | bypass_permissions
+permission_mode = "accept_edits"

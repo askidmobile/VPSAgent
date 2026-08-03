@@ -1,0 +1,12 @@
+/target
+/build
+/research
+**/*.rs.bk
+Cargo.lock.bak
+.vpsagent/
+*.db
+*.db-*
+.env
+# macOS
+.DS_Store
+**/.DS_Store

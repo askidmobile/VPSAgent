@@ -1,0 +1,25 @@
+[package]
+name = "vpsagent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "vpsagent"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+vpsagent-core = { path = "../core" }
+vpsagent-daemon = { path = "../daemon" }
+vpsagent-tui = { path = "../tui" }
+vpsagent-runtime = { path = "../runtime" }
+vpsagent-providers = { path = "../providers" }
+vpsagent-storage = { path = "../storage" }

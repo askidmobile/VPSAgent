@@ -1,0 +1,28 @@
+[package]
+name = "vpsagent-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+tokio.workspace = true
+tokio-util = { version = "0.7", features = ["rt"] }
+tracing.workspace = true
+futures.workspace = true
+reqwest.workspace = true
+ignore.workspace = true
+dirs.workspace = true
+regex = "1"
+async-trait = "0.1"
+serde_yaml = "0.9"
+toml = "0.8"
+url = "2"
+vpsagent-core = { path = "../core" }
+vpsagent-storage = { path = "../storage" }
+vpsagent-providers = { path = "../providers" }

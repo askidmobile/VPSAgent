@@ -137,7 +137,9 @@ impl App {
                 self.push_event(format!("[tool] {name}"));
                 self.agent_busy = true;
             }
-            EventKind::ToolCallEnd { is_error, output, .. } => {
+            EventKind::ToolCallEnd {
+                is_error, output, ..
+            } => {
                 if is_error {
                     self.push_event(format!("[error] {output}"));
                 }
@@ -152,7 +154,12 @@ impl App {
                     a.status = vpsagent_core::AgentStatus::Done;
                 }
             }
-            EventKind::PermissionRequest { call_id, name, summary, .. } => {
+            EventKind::PermissionRequest {
+                call_id,
+                name,
+                summary,
+                ..
+            } => {
                 self.pending_permission = Some(PendingPermission {
                     call_id,
                     name: name.clone(),

@@ -24,7 +24,9 @@ pub fn render(f: &mut Frame, app: &App) {
     render_focus(f, app, chunks[1]);
 
     // Ввод.
-    let input_block = Block::default().borders(Borders::ALL).title(" ввод (Enter — отправить) ");
+    let input_block = Block::default()
+        .borders(Borders::ALL)
+        .title(" ввод (Enter — отправить) ");
     let input_style = if app.agent_busy {
         Style::default().fg(Color::Yellow)
     } else {
@@ -36,7 +38,8 @@ pub fn render(f: &mut Frame, app: &App) {
     f.render_widget(input, chunks[2]);
     // Курсор (по символам, не байтам — кириллица 2 байта на char).
     let input_area = chunks[2];
-    let cursor_x = input_area.x + 1
+    let cursor_x = input_area.x
+        + 1
         + (app.input.chars().count() as u16).min(input_area.width.saturating_sub(2));
     let cursor_y = input_area.y + 1;
     f.set_cursor_position((cursor_x, cursor_y));
@@ -45,8 +48,16 @@ pub fn render(f: &mut Frame, app: &App) {
     let status_style = Style::default().add_modifier(Modifier::REVERSED);
     let mut line = Line::from(vec![
         Span::styled(
-            if app.agent_busy { " ● работаю " } else { " ○ готов " },
-            Style::default().fg(if app.agent_busy { Color::Green } else { Color::DarkGray }),
+            if app.agent_busy {
+                " ● работаю "
+            } else {
+                " ○ готов "
+            },
+            Style::default().fg(if app.agent_busy {
+                Color::Green
+            } else {
+                Color::DarkGray
+            }),
         ),
         Span::raw("  "),
         Span::styled(&app.status, status_style),
@@ -56,8 +67,16 @@ pub fn render(f: &mut Frame, app: &App) {
             Span::raw(format!(" session:{} ", s.id)),
             Span::raw("  "),
             Span::styled(
-                if app.agent_busy { " ● работаю " } else { " ○ готов " },
-                Style::default().fg(if app.agent_busy { Color::Green } else { Color::DarkGray }),
+                if app.agent_busy {
+                    " ● работаю "
+                } else {
+                    " ○ готов "
+                },
+                Style::default().fg(if app.agent_busy {
+                    Color::Green
+                } else {
+                    Color::DarkGray
+                }),
             ),
             Span::raw("  "),
             Span::styled(&app.status, status_style),
@@ -99,7 +118,10 @@ fn render_deck(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         let selected = app.selected_agent == Some(a.id);
         let sel_mark = if selected { ">" } else { " " };
         lines.push(Line::from(vec![
-            Span::styled(format!("{sel_mark}{status_char} "), Style::default().fg(color)),
+            Span::styled(
+                format!("{sel_mark}{status_char} "),
+                Style::default().fg(color),
+            ),
             Span::raw(format!("{:<16} ", a.name)),
             Span::raw(format!("{} ", a.last_action)),
             Span::styled(
@@ -121,7 +143,9 @@ fn render_focus(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     let stream_block = Block::default().borders(Borders::ALL).title(title);
     let text = app.current_text();
     let stream = if text.is_empty() {
-        Paragraph::new("(пусто — отправьте задачу)").block(stream_block).style(Style::default().fg(Color::DarkGray))
+        Paragraph::new("(пусто — отправьте задачу)")
+            .block(stream_block)
+            .style(Style::default().fg(Color::DarkGray))
     } else {
         // Автоскролл вниз: показываем хвост, а не уводим контент за экран.
         let inner_h = area.height.saturating_sub(2);

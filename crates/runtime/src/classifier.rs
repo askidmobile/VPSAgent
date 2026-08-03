@@ -27,7 +27,9 @@ pub fn classify(text: &str, session_messages: &[Message]) -> Route {
 
     // 1. /new <задача> — спавн нового субагента.
     if let Some(rest) = trimmed.strip_prefix("/new ") {
-        return Route::SpawnNew { task: rest.to_string() };
+        return Route::SpawnNew {
+            task: rest.to_string(),
+        };
     }
 
     // 2. /tell <имя или id> <сообщение> — конкретному агенту.

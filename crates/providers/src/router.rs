@@ -85,7 +85,6 @@ impl Router {
 
     /// Сортировать правила по приоритету (для стабильности).
     pub fn sort(&mut self) {
-        self.rules
-            .sort_by(|a, b| b.priority.cmp(&a.priority));
+        self.rules.sort_by(|a, b| b.priority.cmp(&a.priority));
     }
 }

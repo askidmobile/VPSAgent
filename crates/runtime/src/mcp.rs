@@ -59,11 +59,14 @@ impl McpClient {
             tools: vec![],
         };
         // initialize.
-        let _ = client.call("initialize", json!({
+        let _ = client.call(
+            "initialize",
+            json!({
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
                 "clientInfo": { "name": "vpsagent", "version": env!("CARGO_PKG_VERSION") }
-            }))?;
+            }),
+        )?;
         let _ = client.call("notifications/initialized", json!({}))?;
         client.load_tools()?;
         Ok(client)
@@ -103,10 +106,22 @@ impl McpClient {
         if let Some(Value::Object(res)) = self.call("tools/list", json!({}))? {
             if let Some(tools) = res.get("tools").and_then(|t| t.as_array()) {
                 for t in tools {
-                    let name = t.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
-                    let description = t.get("description").and_then(|d| d.as_str()).unwrap_or("").to_string();
+                    let name = t
+                        .get("name")
+                        .and_then(|n| n.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let description = t
+                        .get("description")
+                        .and_then(|d| d.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     let input_schema = t.get("inputSchema").cloned().unwrap_or(json!({}));
-                    self.tools.push(McpTool { name, description, input_schema });
+                    self.tools.push(McpTool {
+                        name,
+                        description,
+                        input_schema,
+                    });
                 }
             }
         }

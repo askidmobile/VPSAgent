@@ -43,11 +43,17 @@ pub fn compact(messages: &[Message], budget: usize) -> Vec<Message> {
     // Маркер сжатия как user-сообщение (не ломает чередование ролей).
     out.push(vpsagent_core::Message {
         id: uuid::Uuid::new_v4(),
-        session_id: messages.first().map(|m| m.session_id).unwrap_or(uuid::Uuid::nil()),
+        session_id: messages
+            .first()
+            .map(|m| m.session_id)
+            .unwrap_or(uuid::Uuid::nil()),
         agent_id: None,
         role: vpsagent_core::Role::User,
         content: vec![ContentBlock::Text {
-            text: format!("[... {} сообщений сжато компактификацией ...]", messages.len() - head.len() - tail.len()),
+            text: format!(
+                "[... {} сообщений сжато компактификацией ...]",
+                messages.len() - head.len() - tail.len()
+            ),
         }],
         tokens: None,
         created_at: chrono::Utc::now(),

@@ -12,9 +12,17 @@ use super::{Tool, ToolContext, ToolOutput};
 /// (для `create_parents` сначала создаются родительские каталоги — иначе
 /// canonicalize несуществующего файла падает). Пути вне cwd отклоняются,
 /// КРОМЕ opt-in списка `ctx.allow_paths`.
-fn resolve_checked(ctx: &ToolContext, p: &str, create_parents: bool) -> Result<PathBuf, ToolOutput> {
+fn resolve_checked(
+    ctx: &ToolContext,
+    p: &str,
+    create_parents: bool,
+) -> Result<PathBuf, ToolOutput> {
     let raw = PathBuf::from(p);
-    let joined = if raw.is_absolute() { raw } else { ctx.cwd.join(raw) };
+    let joined = if raw.is_absolute() {
+        raw
+    } else {
+        ctx.cwd.join(raw)
+    };
 
     // Каноникализация: раскрывает `..`, симлинки, относительные сегменты.
     let canonical = if joined.exists() {
@@ -32,11 +40,7 @@ fn resolve_checked(ctx: &ToolContext, p: &str, create_parents: bool) -> Result<P
                 let name = joined.file_name().unwrap_or_default();
                 return check_bounds(ctx, p, &canon_parent.join(name), &joined);
             }
-            Err(e) => {
-                return Err(ToolOutput::err(format!(
-                    "путь '{p}' недоступен: {e}"
-                )))
-            }
+            Err(e) => return Err(ToolOutput::err(format!("путь '{p}' недоступен: {e}"))),
         }
     };
     let canonical = match canonical {
@@ -94,7 +98,11 @@ impl Tool for Read {
     }
     async fn run(&self, input: Value, ctx: &ToolContext) -> ToolOutput {
         let path = input.get("path").and_then(|v| v.as_str()).unwrap_or("");
-        let offset = input.get("offset").and_then(|v| v.as_u64()).unwrap_or(1).max(1) as usize;
+        let offset = input
+            .get("offset")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1)
+            .max(1) as usize;
         let limit = input.get("limit").and_then(|v| v.as_u64()).unwrap_or(2000) as usize;
         let full = match resolve_checked(ctx, path, false) {
             Ok(p) => p,
@@ -114,7 +122,10 @@ impl Tool for Read {
                     out.push_str(&format!("{n:>6}\t{line}\n"));
                 }
                 if out.is_empty() {
-                    ToolOutput::ok(format!("Файл пуст или диапазон вне границ: {}", full.display()))
+                    ToolOutput::ok(format!(
+                        "Файл пуст или диапазон вне границ: {}",
+                        full.display()
+                    ))
                 } else {
                     ToolOutput::ok(out)
                 }
@@ -158,7 +169,11 @@ impl Tool for Write {
             }
         }
         match std::fs::write(&full, content) {
-            Ok(_) => ToolOutput::ok(format!("Записан {} ({} байт)", full.display(), content.len())),
+            Ok(_) => ToolOutput::ok(format!(
+                "Записан {} ({} байт)",
+                full.display(),
+                content.len()
+            )),
             Err(e) => ToolOutput::err(format!("write {}: {e}", full.display())),
         }
     }
@@ -188,9 +203,18 @@ impl Tool for Edit {
     }
     async fn run(&self, input: Value, ctx: &ToolContext) -> ToolOutput {
         let path = input.get("path").and_then(|v| v.as_str()).unwrap_or("");
-        let old = input.get("old_string").and_then(|v| v.as_str()).unwrap_or("");
-        let new = input.get("new_string").and_then(|v| v.as_str()).unwrap_or("");
-        let replace_all = input.get("replace_all").and_then(|v| v.as_bool()).unwrap_or(false);
+        let old = input
+            .get("old_string")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let new = input
+            .get("new_string")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let replace_all = input
+            .get("replace_all")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let full = match resolve_checked(ctx, path, false) {
             Ok(p) => p,
             Err(out) => return out,
@@ -217,7 +241,11 @@ impl Tool for Edit {
         if let Err(e) = std::fs::write(&full, &new_content) {
             return ToolOutput::err(format!("write {}: {e}", full.display()));
         }
-        ToolOutput::ok(format!("Замена в {} ({} вхождений)", full.display(), if replace_all { count } else { 1 }))
+        ToolOutput::ok(format!(
+            "Замена в {} ({} вхождений)",
+            full.display(),
+            if replace_all { count } else { 1 }
+        ))
     }
 }
 
@@ -298,7 +326,11 @@ impl Tool for MultiEdit {
     }
     async fn run(&self, input: Value, ctx: &ToolContext) -> ToolOutput {
         let path = input.get("path").and_then(|v| v.as_str()).unwrap_or("");
-        let edits = input.get("edits").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+        let edits = input
+            .get("edits")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
         if path.is_empty() || edits.is_empty() {
             return ToolOutput::err("нужны 'path' и непустой 'edits'");
         }
@@ -313,13 +345,22 @@ impl Tool for MultiEdit {
         let mut new_content = content.clone();
         let mut applied = 0usize;
         for edit in &edits {
-            let old = edit.get("old_string").and_then(|v| v.as_str()).unwrap_or("");
-            let new = edit.get("new_string").and_then(|v| v.as_str()).unwrap_or("");
+            let old = edit
+                .get("old_string")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let new = edit
+                .get("new_string")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             if old.is_empty() {
                 continue;
             }
             if new_content.matches(old).count() == 0 {
-                return ToolOutput::err(format!("old_string не найден в {}: {old:?}", full.display()));
+                return ToolOutput::err(format!(
+                    "old_string не найден в {}: {old:?}",
+                    full.display()
+                ));
             }
             // Атомарность: каждая замена применяется один раз к текущему состоянию.
             new_content = match new_content.replacen(old, new, 1) {

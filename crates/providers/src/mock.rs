@@ -46,32 +46,35 @@ impl Provider for MockProvider {
         _req: ChatRequest,
     ) -> std::pin::Pin<Box<dyn Stream<Item = Result<StreamChunk>> + Send>> {
         let queue = self.queue.clone();
-        Box::pin(futures::stream::unfold((queue, 0usize), |(queue, i)| async move {
-            // Берём следующий шаг из общей очереди (pop_front — очередь продвигается).
-            let step = {
-                let mut q = queue.lock().await;
-                q.pop_front()
-            };
-            let step = step?;
-            let (chunk, done) = match step {
-                MockStep::Text(t) => (StreamChunk::TextDelta(t), false),
-                MockStep::ToolCall { name, input } => (
-                    StreamChunk::ToolCall {
-                        id: format!("call-{i}"),
-                        name,
-                        input,
-                    },
-                    false,
-                ),
-                MockStep::Done => (StreamChunk::Done, true),
-            };
-            if done {
-                // Done — завершаем текущий стрим.
-                Some((Ok(chunk), (queue, usize::MAX)))
-            } else {
-                Some((Ok(chunk), (queue, i.saturating_add(1))))
-            }
-        }))
+        Box::pin(futures::stream::unfold(
+            (queue, 0usize),
+            |(queue, i)| async move {
+                // Берём следующий шаг из общей очереди (pop_front — очередь продвигается).
+                let step = {
+                    let mut q = queue.lock().await;
+                    q.pop_front()
+                };
+                let step = step?;
+                let (chunk, done) = match step {
+                    MockStep::Text(t) => (StreamChunk::TextDelta(t), false),
+                    MockStep::ToolCall { name, input } => (
+                        StreamChunk::ToolCall {
+                            id: format!("call-{i}"),
+                            name,
+                            input,
+                        },
+                        false,
+                    ),
+                    MockStep::Done => (StreamChunk::Done, true),
+                };
+                if done {
+                    // Done — завершаем текущий стрим.
+                    Some((Ok(chunk), (queue, usize::MAX)))
+                } else {
+                    Some((Ok(chunk), (queue, i.saturating_add(1))))
+                }
+            },
+        ))
     }
 }
 
@@ -83,7 +86,10 @@ pub fn text_only(text: &str) -> Vec<MockStep> {
 /// Конфиг: один tool-call, затем ответ текстом.
 pub fn tool_then_text(tool: &str, input: Value, final_text: &str) -> Vec<MockStep> {
     vec![
-        MockStep::ToolCall { name: tool.to_string(), input },
+        MockStep::ToolCall {
+            name: tool.to_string(),
+            input,
+        },
         MockStep::Text(final_text.to_string()),
         MockStep::Done,
     ]

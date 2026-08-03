@@ -93,7 +93,10 @@ pub enum Response {
     /// Список агентов сессии (для deck-обзора).
     AgentList(Vec<AgentInfo>),
     Ok,
-    Error { code: i32, message: String },
+    Error {
+        code: i32,
+        message: String,
+    },
 }
 
 /// Сервер-push событие (стриминг).
@@ -147,10 +150,7 @@ pub enum EventKind {
         options: Vec<String>,
     },
     /// Ответ агента на ask_user (пока как общий диалог).
-    UserMessage {
-        agent_id: Id,
-        text: String,
-    },
+    UserMessage { agent_id: Id, text: String },
     /// Ошибка агента.
     Error {
         agent_id: Option<Id>,
@@ -197,7 +197,9 @@ impl JsonRpc {
     pub fn request(id: impl Into<Value>, req: &Request) -> serde_json::Result<Self> {
         let (method, params) = match serde_json::to_value(req)? {
             Value::Object(mut m) => {
-                let method = m.remove("method").and_then(|v| v.as_str().map(str::to_owned));
+                let method = m
+                    .remove("method")
+                    .and_then(|v| v.as_str().map(str::to_owned));
                 let params = m.remove("params");
                 (method, params)
             }
@@ -218,9 +220,7 @@ impl JsonRpc {
     pub fn response(id: impl Into<Value>, resp: &Response) -> serde_json::Result<Self> {
         let value = serde_json::to_value(resp)?;
         let (result, error) = match &value {
-            Value::Object(m)
-                if m.get("result").and_then(|v| v.as_str()) == Some("error") =>
-            {
+            Value::Object(m) if m.get("result").and_then(|v| v.as_str()) == Some("error") => {
                 let code = m
                     .get("data")
                     .and_then(|d| d.get("code"))

@@ -69,8 +69,14 @@ impl Tool for ApplyPatch {
             let mut result = content.clone();
             let mut applied = 0usize;
             for edit in edits {
-                let old = edit.get("old_string").and_then(|v| v.as_str()).unwrap_or("");
-                let new = edit.get("new_string").and_then(|v| v.as_str()).unwrap_or("");
+                let old = edit
+                    .get("old_string")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let new = edit
+                    .get("new_string")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 if old.is_empty() {
                     continue;
                 }
@@ -104,7 +110,10 @@ impl Tool for ApplyPatch {
 
 fn write_or_err(path: &std::path::Path, content: &str, applied: usize) -> ToolOutput {
     match std::fs::write(path, content) {
-        Ok(_) => ToolOutput::ok(format!("Применено изменений: {applied} в {}", path.display())),
+        Ok(_) => ToolOutput::ok(format!(
+            "Применено изменений: {applied} в {}",
+            path.display()
+        )),
         Err(e) => ToolOutput::err(format!("write {}: {e}", path.display())),
     }
 }

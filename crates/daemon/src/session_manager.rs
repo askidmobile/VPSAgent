@@ -83,7 +83,12 @@ impl SessionManager {
 
     /// Смотритель агент-таски: по завершении (Ok/Err/паника) удаляет запись
     /// из agents — иначе send падает навсегда и restart недостижим (C10).
-    fn spawn_watcher(&self, agent_id: Id, spawn_id: Uuid, handle: JoinHandle<vpsagent_core::Result<()>>) {
+    fn spawn_watcher(
+        &self,
+        agent_id: Id,
+        spawn_id: Uuid,
+        handle: JoinHandle<vpsagent_core::Result<()>>,
+    ) {
         let agents = self.agents.clone();
         tokio::spawn(async move {
             match handle.await {
@@ -100,11 +105,7 @@ impl SessionManager {
     }
 
     /// Создать сессию (без агента; агент спавнится при первом сообщении).
-    pub async fn create_session(
-        &self,
-        cwd: &str,
-        model: Option<&str>,
-    ) -> anyhow::Result<Session> {
+    pub async fn create_session(&self, cwd: &str, model: Option<&str>) -> anyhow::Result<Session> {
         self.storage.create_session(cwd, model).await
     }
 
@@ -116,14 +117,14 @@ impl SessionManager {
     /// Отправить сообщение в сессию. Если агента нет — спавним главного.
     /// Обрабатывает команды мультипотока (/tell, /new, /steer) через классификатор.
     /// Возвращает agent_id (для UI).
-    pub async fn send_message(
-        &self,
-        session_id: Id,
-        text: String,
-    ) -> anyhow::Result<Id> {
+    pub async fn send_message(&self, session_id: Id, text: String) -> anyhow::Result<Id> {
         // Команды мультипотока.
         if vpsagent_runtime::is_multiplex_command(&text) {
-            let messages = self.storage.list_messages(session_id).await.unwrap_or_default();
+            let messages = self
+                .storage
+                .list_messages(session_id)
+                .await
+                .unwrap_or_default();
             let route = vpsagent_runtime::classify(&text, &messages);
             return self.handle_multiplex(session_id, route).await;
         }
@@ -161,7 +162,11 @@ impl SessionManager {
     }
 
     /// Обработать команду мультипотока.
-    async fn handle_multiplex(&self, session_id: Id, route: vpsagent_runtime::Route) -> anyhow::Result<Id> {
+    async fn handle_multiplex(
+        &self,
+        session_id: Id,
+        route: vpsagent_runtime::Route,
+    ) -> anyhow::Result<Id> {
         use vpsagent_runtime::Route;
         match route {
             Route::ToAgent(target) => {

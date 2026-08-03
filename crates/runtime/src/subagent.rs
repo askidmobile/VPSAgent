@@ -113,7 +113,11 @@ impl SubagentManager {
     pub async fn depth_of(&self, agent_id: Id, session_id: Id) -> usize {
         let mut depth = 0usize;
         let mut current = Some(agent_id);
-        let agents = self.storage.list_agents(session_id).await.unwrap_or_default();
+        let agents = self
+            .storage
+            .list_agents(session_id)
+            .await
+            .unwrap_or_default();
         while let Some(id) = current {
             if depth >= 3 {
                 return 3;

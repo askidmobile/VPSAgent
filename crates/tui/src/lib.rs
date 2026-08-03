@@ -17,8 +17,10 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use crossterm::event::{Event as CrosstermEvent, EventStream, KeyCode, KeyEvent, KeyModifiers};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::execute;
+use crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+};
 use futures::StreamExt;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
@@ -40,7 +42,13 @@ pub async fn run(config: &Config, cwd: &str) -> Result<()> {
 
     // Создаём новую сессию (Фаза 1 — простая семантика: одна сессия на запуск TUI).
     let resp = client
-        .request(&Request::SessionCreate { cwd: cwd.to_string(), model: None }, &mut |_| {})
+        .request(
+            &Request::SessionCreate {
+                cwd: cwd.to_string(),
+                model: None,
+            },
+            &mut |_| {},
+        )
         .await?;
     let session = match resp {
         Response::Session(s) => s,
@@ -51,7 +59,10 @@ pub async fn run(config: &Config, cwd: &str) -> Result<()> {
     // Attach к стриму событий.
     let _ = client
         .request(
-            &Request::SessionAttach { session_id: session.id, last_seq: None },
+            &Request::SessionAttach {
+                session_id: session.id,
+                last_seq: None,
+            },
             &mut |_| {},
         )
         .await?;
@@ -126,15 +137,23 @@ async fn handle_key(
     socket: &Path,
 ) -> Result<bool> {
     match ev {
-        CrosstermEvent::Key(KeyEvent { code, modifiers, .. }) => {
+        CrosstermEvent::Key(KeyEvent {
+            code, modifiers, ..
+        }) => {
             // Диалог подтверждения разрешения: перехватывает y/n.
             if app.pending_permission.is_some() {
                 match code {
-                    KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Char('n') | KeyCode::Char('N') => {
+                    KeyCode::Char('y')
+                    | KeyCode::Char('Y')
+                    | KeyCode::Char('n')
+                    | KeyCode::Char('N') => {
                         let allowed = matches!(code, KeyCode::Char('y') | KeyCode::Char('Y'));
                         if let Some(p) = app.pending_permission.take() {
                             client
-                                .send(&Request::PermissionAnswer { call_id: p.call_id, allowed })
+                                .send(&Request::PermissionAnswer {
+                                    call_id: p.call_id,
+                                    allowed,
+                                })
                                 .await?;
                             app.status = if allowed {
                                 format!("разрешено: {}", p.name)
@@ -152,9 +171,14 @@ async fn handle_key(
                 (KeyCode::Char('d'), KeyModifiers::CONTROL) => return Ok(false),
                 (KeyCode::Enter, _) => {
                     if let Some((session_id, text)) = app.submit_input() {
-                        app.agent_text.push_str(&format!("\n\n--- ты ---\n{text}\n"));
+                        app.agent_text
+                            .push_str(&format!("\n\n--- ты ---\n{text}\n"));
                         client
-                            .send(&Request::MessageSend { session_id, text, target: None })
+                            .send(&Request::MessageSend {
+                                session_id,
+                                text,
+                                target: None,
+                            })
                             .await?;
                         app.status = "отправлено, ожидаю ответ…".into();
                     }

@@ -4,7 +4,7 @@
 //! отката. Полный откат файлов (теневые git-коммиты / копии) — следующая итерация.
 
 use serde::{Deserialize, Serialize};
-use vpsagent_core::{Message, Id};
+use vpsagent_core::{Id, Message};
 
 /// Снапшот состояния диалога сессии.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,7 +27,12 @@ impl RewindStore {
     }
 
     /// Создать снапшот (с меткой).
-    pub fn snapshot(&mut self, session_id: Id, label: &str, messages: Vec<Message>) -> SessionSnapshot {
+    pub fn snapshot(
+        &mut self,
+        session_id: Id,
+        label: &str,
+        messages: Vec<Message>,
+    ) -> SessionSnapshot {
         let snap = SessionSnapshot {
             session_id,
             label: label.to_string(),

@@ -9,14 +9,17 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use vpsagent_core::{Config, ContentBlock, EventKind, Id, Role, TokenUsage};
 use vpsagent_providers::{MockProvider, MockStep};
-use vpsagent_runtime::{
-    run_agent, AgentParams, AgentDefinition, Permissions, SubagentManager,
-};
+use vpsagent_runtime::{run_agent, AgentDefinition, AgentParams, Permissions, SubagentManager};
 use vpsagent_storage::Storage;
 
 fn tmp_db() -> std::path::PathBuf {
-    std::path::PathBuf::from(format!("/tmp/vp-rt-{}.db", std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos()))
+    std::path::PathBuf::from(format!(
+        "/tmp/vp-rt-{}.db",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .subsec_nanos()
+    ))
 }
 
 #[test]
@@ -44,16 +47,14 @@ async fn agent_loop_runs_tool_call_with_mock() {
     let config = Arc::new(Config::default());
 
     // Mock: один tool-call (shell), затем текст.
-    let provider: Arc<dyn vpsagent_providers::Provider> = Arc::new(MockProvider::new(
-        vec![
-            MockStep::ToolCall {
-                name: "shell".into(),
-                input: serde_json::json!({ "command": "echo hi" }),
-            },
-            MockStep::Text("готово".into()),
-            MockStep::Done,
-        ],
-    ));
+    let provider: Arc<dyn vpsagent_providers::Provider> = Arc::new(MockProvider::new(vec![
+        MockStep::ToolCall {
+            name: "shell".into(),
+            input: serde_json::json!({ "command": "echo hi" }),
+        },
+        MockStep::Text("готово".into()),
+        MockStep::Done,
+    ]));
 
     let subagents = SubagentManager::new(storage.clone(), config.clone());
     let (event_tx, _rx) = mpsc::unbounded_channel::<EventKind>();
@@ -89,7 +90,9 @@ async fn agent_loop_runs_tool_call_with_mock() {
     // Агент завершён в БД.
     let agents = storage.list_agents(session.id).await.unwrap();
     assert!(
-        agents.iter().any(|a| a.status == vpsagent_core::AgentStatus::Done),
+        agents
+            .iter()
+            .any(|a| a.status == vpsagent_core::AgentStatus::Done),
         "агент должен быть Done"
     );
     // Сообщение записано.
@@ -109,20 +112,18 @@ async fn spawn_subagent_with_task_tool() {
     let config = Arc::new(Config::default());
 
     // Mock родителя: спавн субагента через task, затем текст.
-    let provider: Arc<dyn vpsagent_providers::Provider> = Arc::new(MockProvider::new(
-        vec![
-            MockStep::ToolCall {
-                name: "task".into(),
-                input: serde_json::json!({
-                    "definition": "code-reviewer",
-                    "task": "проверь код",
-                    "fork": false
-                }),
-            },
-            MockStep::Text("субагент запущен".into()),
-            MockStep::Done,
-        ],
-    ));
+    let provider: Arc<dyn vpsagent_providers::Provider> = Arc::new(MockProvider::new(vec![
+        MockStep::ToolCall {
+            name: "task".into(),
+            input: serde_json::json!({
+                "definition": "code-reviewer",
+                "task": "проверь код",
+                "fork": false
+            }),
+        },
+        MockStep::Text("субагент запущен".into()),
+        MockStep::Done,
+    ]));
 
     let subagents = SubagentManager::new(storage.clone(), config.clone());
     let (event_tx, _rx) = mpsc::unbounded_channel::<EventKind>();
@@ -171,7 +172,9 @@ async fn spawn_subagent_with_task_tool() {
     run_agent(params).await.unwrap();
     let agents = storage.list_agents(session.id).await.unwrap();
     assert!(
-        agents.iter().any(|a| a.status == vpsagent_core::AgentStatus::Done),
+        agents
+            .iter()
+            .any(|a| a.status == vpsagent_core::AgentStatus::Done),
         "главный агент должен завершиться"
     );
     let _ = std::fs::remove_dir_all(&def_dir);

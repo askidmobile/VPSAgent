@@ -34,7 +34,10 @@ impl Tool for CreateSkill {
     }
     async fn run(&self, input: Value, ctx: &ToolContext) -> ToolOutput {
         let name = input.get("name").and_then(|v| v.as_str()).unwrap_or("");
-        let description = input.get("description").and_then(|v| v.as_str()).unwrap_or("");
+        let description = input
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let body = input.get("body").and_then(|v| v.as_str()).unwrap_or("");
         if name.is_empty() || description.is_empty() || body.is_empty() {
             return ToolOutput::err("нужны name, description и body");
@@ -60,6 +63,9 @@ impl Tool for CreateSkill {
         if let Err(e) = std::fs::write(&path, &content) {
             return ToolOutput::err(format!("write: {e}"));
         }
-        ToolOutput::ok(format!("Скилл '{name}' создан и валиден: {}", path.display()))
+        ToolOutput::ok(format!(
+            "Скилл '{name}' создан и валиден: {}",
+            path.display()
+        ))
     }
 }

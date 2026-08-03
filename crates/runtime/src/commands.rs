@@ -28,7 +28,9 @@ impl Command {
     pub fn parse(name: &str, content: &str, source: PathBuf) -> anyhow::Result<Command> {
         let (frontmatter, body) = split_frontmatter(content);
         let meta: CommandMeta = if frontmatter.is_empty() {
-            CommandMeta { description: String::new() }
+            CommandMeta {
+                description: String::new(),
+            }
         } else {
             serde_yaml::from_str(&frontmatter)
                 .map_err(|e| anyhow::anyhow!("некорректный frontmatter в {source:?}: {e}"))?

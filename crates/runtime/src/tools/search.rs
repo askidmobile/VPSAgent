@@ -33,7 +33,10 @@ impl Tool for Grep {
     async fn run(&self, input: Value, ctx: &ToolContext) -> ToolOutput {
         let pattern = input.get("pattern").and_then(|v| v.as_str()).unwrap_or("");
         let path = input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
-        let mode = input.get("mode").and_then(|v| v.as_str()).unwrap_or("content");
+        let mode = input
+            .get("mode")
+            .and_then(|v| v.as_str())
+            .unwrap_or("content");
         let include = input.get("include").and_then(|v| v.as_str());
         let full = if std::path::Path::new(path).is_absolute() {
             std::path::PathBuf::from(path)
@@ -45,7 +48,11 @@ impl Tool for Grep {
             Err(e) => return ToolOutput::err(format!("некорректный regex: {e}")),
         };
         let mut walker = WalkBuilder::new(&full);
-        walker.hidden(true).ignore(true).git_ignore(true).git_exclude(true);
+        walker
+            .hidden(true)
+            .ignore(true)
+            .git_ignore(true)
+            .git_exclude(true);
         if let Some(glob) = include {
             // Простой фильтр по расширению/имени через сравнение suffix.
             // (Полноценный glob-оверрайд — Фаза 2 с types/types-matcher.)
@@ -54,7 +61,10 @@ impl Tool for Grep {
         let mut out = String::new();
         let mut total = 0usize;
         for entry in walker.build() {
-            let entry = match entry { Ok(e) => e, Err(_) => continue };
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
             if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
                 continue;
             }

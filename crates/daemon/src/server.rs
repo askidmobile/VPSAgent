@@ -169,7 +169,12 @@ impl RpcServer {
     ) -> Response {
         match req {
             Request::DaemonStatus => {
-                let sessions = self.manager.list_sessions().await.map(|v| v.len()).unwrap_or(0);
+                let sessions = self
+                    .manager
+                    .list_sessions()
+                    .await
+                    .map(|v| v.len())
+                    .unwrap_or(0);
                 Response::DaemonStatus(DaemonStatus {
                     version: env!("CARGO_PKG_VERSION").into(),
                     pid: self.pid,
@@ -178,23 +183,51 @@ impl RpcServer {
                     agents: 0,
                 })
             }
-            Request::SessionCreate { cwd, model } => match self.manager.create_session(&cwd, model.as_deref()).await {
-                Ok(s) => Response::Session(s),
-                Err(e) => Response::Error { code: -32000, message: e.to_string() },
-            },
+            Request::SessionCreate { cwd, model } => {
+                match self.manager.create_session(&cwd, model.as_deref()).await {
+                    Ok(s) => Response::Session(s),
+                    Err(e) => Response::Error {
+                        code: -32000,
+                        message: e.to_string(),
+                    },
+                }
+            }
             Request::SessionList => match self.manager.list_sessions().await {
                 Ok(v) => Response::SessionList(v),
-                Err(e) => Response::Error { code: -32000, message: e.to_string() },
+                Err(e) => Response::Error {
+                    code: -32000,
+                    message: e.to_string(),
+                },
             },
             // TODO(daemon-агент): использовать last_seq от клиента для инкрементального
             // replay (сейчас всегда полный replay с 0).
-            Request::SessionAttach { session_id, last_seq: _ } => {
-                let messages = self.storage.list_messages(session_id).await.unwrap_or_default();
-                let agents = self.manager.list_agents(session_id).await.unwrap_or_default();
+            Request::SessionAttach {
+                session_id,
+                last_seq: _,
+            } => {
+                let messages = self
+                    .storage
+                    .list_messages(session_id)
+                    .await
+                    .unwrap_or_default();
+                let agents = self
+                    .manager
+                    .list_agents(session_id)
+                    .await
+                    .unwrap_or_default();
                 let last_seq = 0;
-                let (replay, rx) = match self.bus.subscribe(&self.storage, session_id, last_seq).await {
+                let (replay, rx) = match self
+                    .bus
+                    .subscribe(&self.storage, session_id, last_seq)
+                    .await
+                {
                     Ok(v) => v,
-                    Err(e) => return Response::Error { code: -32000, message: e.to_string() },
+                    Err(e) => {
+                        return Response::Error {
+                            code: -32000,
+                            message: e.to_string(),
+                        }
+                    }
                 };
                 let writer = writer.clone();
                 let storage = self.storage.clone();
@@ -205,7 +238,12 @@ impl RpcServer {
                         ev: Event,
                     ) -> bool {
                         let s = serde_json::to_string(&JsonRpc::notification(ev)).unwrap();
-                        writer.lock().await.write_all((s + "\n").as_bytes()).await.is_ok()
+                        writer
+                            .lock()
+                            .await
+                            .write_all((s + "\n").as_bytes())
+                            .await
+                            .is_ok()
                     }
                     // Последний отправленный seq: дедупликация replay/live (H1).
                     let mut last_sent: u64 = 0;
@@ -254,15 +292,24 @@ impl RpcServer {
                         }
                     }
                 });
-                Response::SessionAttach { messages, agents, last_seq }
-            }
-            Request::SessionDetach { session_id: _ } => Response::Ok,
-            Request::MessageSend { session_id, text, target: _ } => {
-                match self.manager.send_message(session_id, text).await {
-                    Ok(_) => Response::Ok,
-                    Err(e) => Response::Error { code: -32000, message: e.to_string() },
+                Response::SessionAttach {
+                    messages,
+                    agents,
+                    last_seq,
                 }
             }
+            Request::SessionDetach { session_id: _ } => Response::Ok,
+            Request::MessageSend {
+                session_id,
+                text,
+                target: _,
+            } => match self.manager.send_message(session_id, text).await {
+                Ok(_) => Response::Ok,
+                Err(e) => Response::Error {
+                    code: -32000,
+                    message: e.to_string(),
+                },
+            },
             Request::AgentInterrupt { agent_id } => {
                 // Сначала проверим субагентов, потом главного.
                 self.manager.subagents().interrupt(agent_id).await;
@@ -299,13 +346,20 @@ impl RpcServer {
                     .await
                 {
                     Ok(_id) => Response::Ok,
-                    Err(e) => Response::Error { code: -32000, message: e.to_string() },
+                    Err(e) => Response::Error {
+                        code: -32000,
+                        message: e.to_string(),
+                    },
                 }
             }
             Request::AgentList { session_id } => {
                 // Активные субагенты + главный из БД.
                 let mut agents = self.manager.subagents().list().await;
-                let mut main_agents = self.manager.list_agents(session_id).await.unwrap_or_default();
+                let mut main_agents = self
+                    .manager
+                    .list_agents(session_id)
+                    .await
+                    .unwrap_or_default();
                 agents.append(&mut main_agents);
                 Response::AgentList(agents)
             }

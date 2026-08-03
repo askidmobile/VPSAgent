@@ -88,7 +88,13 @@ fn main() -> Result<()> {
     // (fork) ДО создания tokio-рантайма — иначе fork унаследует epoll/kqueue fd
     // и в child упадёт "failed to wake I/O driver: Bad file descriptor".
     // Поэтому обрабатываем запуск демона отдельно, без `#[tokio::main]`.
-    if let Some(Command::Daemon { action: None, foreground, daemonize, log_file }) = &cli.command {
+    if let Some(Command::Daemon {
+        action: None,
+        foreground,
+        daemonize,
+        log_file,
+    }) = &cli.command
+    {
         return run_daemon_sync(config, *foreground, *daemonize, log_file.clone());
     }
 
@@ -103,8 +109,17 @@ fn main() -> Result<()> {
         // Не запускаем для daemon stop/status — они не требуют секретов.
         let needs_init = matches!(
             cli.command,
-            None | Some(Command::Run { .. }) | Some(Command::Attach { .. }) | Some(Command::McpServe) | Some(Command::Init)
-        ) && !matches!(cli.command, Some(Command::Daemon { action: Some(_), .. }));
+            None | Some(Command::Run { .. })
+                | Some(Command::Attach { .. })
+                | Some(Command::McpServe)
+                | Some(Command::Init)
+        ) && !matches!(
+            cli.command,
+            Some(Command::Daemon {
+                action: Some(_),
+                ..
+            })
+        );
         if needs_init && config.needs_init() && std::io::stdin().is_terminal() {
             config = vpsagent_tui::run_init().await?;
         }
@@ -122,20 +137,21 @@ fn main() -> Result<()> {
             }
             Some(Command::Daemon { action, .. }) => match action.unwrap() {
                 DaemonCmd::Stop => daemon_stop(&config).await,
-                DaemonCmd::Status { output_format } => {
-                    daemon_status(&config, &output_format).await
-                }
+                DaemonCmd::Status { output_format } => daemon_status(&config, &output_format).await,
             },
-            Some(Command::Run { task, model, output_format }) => {
-                run_headless(&config, &task, model, &output_format).await
-            }
+            Some(Command::Run {
+                task,
+                model,
+                output_format,
+            }) => run_headless(&config, &task, model, &output_format).await,
             Some(Command::Attach { session_id }) => {
                 run_attach(&config, session_id.as_deref()).await
             }
             Some(Command::McpServe) => {
                 // MCP-сервер: требует запущенный демон (для storage/session).
                 ensure_daemon(&config).await?;
-                let storage = vpsagent_storage::Storage::open(&config.paths.db).await
+                let storage = vpsagent_storage::Storage::open(&config.paths.db)
+                    .await
                     .map_err(|e| anyhow::anyhow!(e.to_string()))?;
                 let subagents = vpsagent_runtime::SubagentManager::new(
                     storage.clone(),
@@ -148,7 +164,10 @@ fn main() -> Result<()> {
             }
             Some(Command::Init) => {
                 let cfg = vpsagent_tui::run_init().await?;
-                eprintln!("Инициализация завершена. Конфиг: {}", cfg.paths.data_dir.display());
+                eprintln!(
+                    "Инициализация завершена. Конфиг: {}",
+                    cfg.paths.data_dir.display()
+                );
                 Ok(())
             }
         }
@@ -262,7 +281,10 @@ async fn daemon_stop(config: &Config) -> Result<()> {
     let client = match RpcClient::connect(&config.paths.socket).await {
         Ok(c) => c,
         Err(_) => {
-            eprintln!("демон не запущен (сокет {} недоступен)", config.paths.socket.display());
+            eprintln!(
+                "демон не запущен (сокет {} недоступен)",
+                config.paths.socket.display()
+            );
             std::process::exit(1);
         }
     };
@@ -281,7 +303,10 @@ async fn daemon_status(config: &Config, output_format: &str) -> Result<()> {
     let client = match RpcClient::connect(&config.paths.socket).await {
         Ok(c) => c,
         Err(_) => {
-            eprintln!("демон не запущен (сокет {} недоступен)", config.paths.socket.display());
+            eprintln!(
+                "демон не запущен (сокет {} недоступен)",
+                config.paths.socket.display()
+            );
             std::process::exit(1);
         }
     };
@@ -320,7 +345,12 @@ fn format_uptime(secs: u64) -> String {
 
 /// Headless-прогон: убедиться что демон работает, создать сессию, отправить задачу,
 /// дождаться AgentFinished, вывести результат, exit code 0/1.
-async fn run_headless(config: &Config, task: &str, model: Option<String>, output_format: &str) -> Result<()> {
+async fn run_headless(
+    config: &Config,
+    task: &str,
+    model: Option<String>,
+    output_format: &str,
+) -> Result<()> {
     ensure_daemon(config).await?;
     let client = RpcClient::connect(&config.paths.socket).await?;
 
@@ -351,7 +381,13 @@ async fn run_headless(config: &Config, task: &str, model: Option<String>, output
 
     // Подключаемся к стриму событий.
     let attach_resp = client
-        .request(&Request::SessionAttach { session_id: session.id, last_seq: None }, &mut |_| {})
+        .request(
+            &Request::SessionAttach {
+                session_id: session.id,
+                last_seq: None,
+            },
+            &mut |_| {},
+        )
         .await?;
     if output_format == "stream-json" {
         if let Response::SessionAttach { messages, .. } = &attach_resp {
@@ -374,7 +410,13 @@ async fn run_headless(config: &Config, task: &str, model: Option<String>, output
                     let _ = std::io::stdout().flush();
                 } else if output_format == "stream-json" {
                     let text = text.clone();
-                    println!("{}", serde_json::to_string(&serde_json::json!({ "type": "text_delta", "text": text })).unwrap());
+                    println!(
+                        "{}",
+                        serde_json::to_string(
+                            &serde_json::json!({ "type": "text_delta", "text": text })
+                        )
+                        .unwrap()
+                    );
                 }
                 last_text.push_str(&text);
             }
@@ -435,7 +477,13 @@ async fn run_attach(config: &Config, session_id: Option<&str>) -> Result<()> {
     };
 
     let resp = client
-        .request(&Request::SessionAttach { session_id, last_seq: None }, &mut |_| {})
+        .request(
+            &Request::SessionAttach {
+                session_id,
+                last_seq: None,
+            },
+            &mut |_| {},
+        )
         .await?;
     if let Response::SessionAttach { messages, .. } = &resp {
         for m in messages {
@@ -449,7 +497,9 @@ async fn run_attach(config: &Config, session_id: Option<&str>) -> Result<()> {
             EventKind::TextDelta { text, .. } => print!("{text}"),
             EventKind::UserMessage { text, .. } => println!("\n--- агент ---\n{text}"),
             EventKind::ToolCallStart { name, .. } => println!("\n[tool: {name}]"),
-            EventKind::ToolCallEnd { is_error, output, .. } => {
+            EventKind::ToolCallEnd {
+                is_error, output, ..
+            } => {
                 if is_error {
                     println!("[ошибка инструмента] {output}");
                 }
@@ -465,7 +515,9 @@ async fn run_attach(config: &Config, session_id: Option<&str>) -> Result<()> {
 /// Убедиться, что демон запущен; если нет — запустить в фоне.
 async fn ensure_daemon(config: &Config) -> Result<()> {
     if config.paths.socket.exists()
-        && tokio::net::UnixStream::connect(&config.paths.socket).await.is_ok()
+        && tokio::net::UnixStream::connect(&config.paths.socket)
+            .await
+            .is_ok()
     {
         return Ok(());
     }
@@ -498,7 +550,10 @@ async fn ensure_daemon(config: &Config) -> Result<()> {
     // Подождём, пока сокет появится (poll до 5 сек).
     for _ in 0..50 {
         if config.paths.socket.exists() {
-            if tokio::net::UnixStream::connect(&config.paths.socket).await.is_ok() {
+            if tokio::net::UnixStream::connect(&config.paths.socket)
+                .await
+                .is_ok()
+            {
                 return Ok(());
             }
         }

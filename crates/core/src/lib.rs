@@ -11,6 +11,6 @@ pub use protocol::{
     Event, EventKind, JsonRpc, Request, RequestId, Response, RpcError, PROTOCOL_VERSION,
 };
 pub use types::{
-    AgentInfo, AgentKind, AgentStatus, ContentBlock, DaemonStatus, Id, Message, Role,
-    Session, SessionStatus, TokenUsage,
+    AgentInfo, AgentKind, AgentStatus, ContentBlock, DaemonStatus, Id, Message, Role, Session,
+    SessionStatus, TokenUsage,
 };

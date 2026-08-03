@@ -115,7 +115,9 @@ impl Config {
         let mut cfg = Self::default();
         for path in [
             dirs::home_dir().map(|h| h.join(".vpsagent/config.toml")),
-            std::env::current_dir().ok().map(|c| c.join(".vpsagent/config.toml")),
+            std::env::current_dir()
+                .ok()
+                .map(|c| c.join(".vpsagent/config.toml")),
         ]
         .into_iter()
         .flatten()
@@ -184,7 +186,10 @@ impl Config {
     }
 
     /// Записать секреты в ~/.vpsagent/secrets.toml с правами 0600.
-    pub fn save_secrets(&self, secrets: &std::collections::HashMap<String, String>) -> anyhow::Result<()> {
+    pub fn save_secrets(
+        &self,
+        secrets: &std::collections::HashMap<String, String>,
+    ) -> anyhow::Result<()> {
         let dir = &self.paths.data_dir;
         std::fs::create_dir_all(dir)?;
         let content = toml::to_string_pretty(secrets)?;
@@ -241,7 +246,10 @@ mod tests {
         "#;
         let paths: Paths = toml::from_str(toml).expect("старый конфиг должен десериализоваться");
         assert_eq!(paths.data_dir, PathBuf::from("/tmp/vps"));
-        assert!(paths.log_file.as_os_str().is_empty(), "log_file должен быть пустым по умолчанию");
+        assert!(
+            paths.log_file.as_os_str().is_empty(),
+            "log_file должен быть пустым по умолчанию"
+        );
     }
 
     /// Новый конфиг с явным `log_file` — значение сохраняется как есть.

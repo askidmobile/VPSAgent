@@ -28,7 +28,10 @@ impl Tool for TaskSpawn {
         })
     }
     async fn run(&self, input: Value, ctx: &ToolContext) -> ToolOutput {
-        let def = input.get("definition").and_then(|v| v.as_str()).unwrap_or("");
+        let def = input
+            .get("definition")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let task = input.get("task").and_then(|v| v.as_str()).unwrap_or("");
         let fork = input.get("fork").and_then(|v| v.as_bool()).unwrap_or(false);
         if def.is_empty() || task.is_empty() {

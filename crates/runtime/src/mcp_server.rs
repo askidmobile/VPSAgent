@@ -63,8 +63,14 @@ pub fn serve_mcp(
                 Some(json!({ "tools": tools_list }))
             }
             "tools/call" => {
-                let name = req.pointer("/params/name").and_then(|v| v.as_str()).unwrap_or("");
-                let _args = req.pointer("/params/arguments").cloned().unwrap_or(json!({}));
+                let name = req
+                    .pointer("/params/name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let _args = req
+                    .pointer("/params/arguments")
+                    .cloned()
+                    .unwrap_or(json!({}));
                 Some(json!({
                     "content": [{ "type": "text", "text": format!("MCP-вызов '{name}' обработан") }],
                     "isError": false

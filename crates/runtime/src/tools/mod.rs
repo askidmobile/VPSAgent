@@ -62,10 +62,16 @@ pub struct ToolOutput {
 
 impl ToolOutput {
     pub fn ok(content: impl Into<String>) -> Self {
-        Self { content: content.into(), is_error: false }
+        Self {
+            content: content.into(),
+            is_error: false,
+        }
     }
     pub fn err(content: impl Into<String>) -> Self {
-        Self { content: content.into(), is_error: true }
+        Self {
+            content: content.into(),
+            is_error: true,
+        }
     }
 }
 
@@ -98,7 +104,9 @@ impl Default for Registry {
 
 impl Registry {
     pub fn new() -> Self {
-        Self { tools: Default::default() }
+        Self {
+            tools: Default::default(),
+        }
     }
 
     /// Реестр Фазы 1/2 со встроенными инструментами.
@@ -164,12 +172,7 @@ impl Registry {
     }
 
     /// Выполнить вызов по имени.
-    pub async fn run(
-        &self,
-        name: &str,
-        input: Value,
-        ctx: &ToolContext,
-    ) -> Result<ToolOutput> {
+    pub async fn run(&self, name: &str, input: Value, ctx: &ToolContext) -> Result<ToolOutput> {
         let tool = self
             .get(name)
             .ok_or_else(|| Error::PermissionDenied(format!("инструмент '{name}' не найден")))?;

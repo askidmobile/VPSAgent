@@ -53,7 +53,11 @@ async fn try_load() -> anyhow::Result<Vec<RegistryProvider>> {
     let mut out: Vec<RegistryProvider> = raw
         .into_iter()
         .map(|(id, p)| RegistryProvider {
-            name: if p.name.is_empty() { id.clone() } else { p.name },
+            name: if p.name.is_empty() {
+                id.clone()
+            } else {
+                p.name
+            },
             id,
             api: p.api,
             npm: p.npm,
@@ -72,7 +76,18 @@ async fn try_load() -> anyhow::Result<Vec<RegistryProvider>> {
 
 /// Известные (приоритетные в списке).
 fn is_known(id: &str) -> bool {
-    matches!(id, "openai" | "anthropic" | "openrouter" | "azure" | "google" | "ollama" | "groq" | "xai" | "mistral")
+    matches!(
+        id,
+        "openai"
+            | "anthropic"
+            | "openrouter"
+            | "azure"
+            | "google"
+            | "ollama"
+            | "groq"
+            | "xai"
+            | "mistral"
+    )
 }
 
 /// Встроенный fallback (если models.dev недоступен).

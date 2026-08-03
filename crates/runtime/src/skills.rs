@@ -34,9 +34,14 @@ impl Skill {
             anyhow::bail!("скилл {source:?}: отсутствует 'description'");
         }
         let mut frontmatter = std::collections::HashMap::new();
-        if let Ok(map) = serde_yaml::from_str::<std::collections::HashMap<String, serde_yaml::Value>>(&frontmatter_str) {
+        if let Ok(map) = serde_yaml::from_str::<std::collections::HashMap<String, serde_yaml::Value>>(
+            &frontmatter_str,
+        ) {
             for (k, v) in map {
-                frontmatter.insert(k, serde_json::to_value(&v).unwrap_or(serde_json::Value::Null));
+                frontmatter.insert(
+                    k,
+                    serde_json::to_value(&v).unwrap_or(serde_json::Value::Null),
+                );
             }
         }
         Ok(Self {

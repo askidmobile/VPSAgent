@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use vpsagent_core::{Config, Request, Response};
-use vpsagent_daemon::{DaemonLock, EventBus, RpcServer, RpcClient, SessionManager};
+use vpsagent_daemon::{DaemonLock, EventBus, RpcClient, RpcServer, SessionManager};
 use vpsagent_storage::Storage;
 fn tmp_socket_path() -> std::path::PathBuf {
     // Unix-сокет лимит ~104 символа; temp_dir на macOS длинный.
@@ -33,7 +33,10 @@ fn singleton_lock_acquire_then_none() {
     let lock1 = DaemonLock::acquire(&path).unwrap();
     assert!(lock1.is_some(), "первый acquire должен быть Some");
     let lock2 = DaemonLock::acquire(&path).unwrap();
-    assert!(lock2.is_none(), "второй acquire должен быть None (демон уже работает)");
+    assert!(
+        lock2.is_none(),
+        "второй acquire должен быть None (демон уже работает)"
+    );
     drop(lock1);
     // После drop файл удалён — новый acquire должен быть Some.
     let lock3 = DaemonLock::acquire(&path).unwrap();
@@ -58,11 +61,16 @@ async fn rpc_session_create_list_attach() {
     let storage = Storage::open(&config.paths.db).await.unwrap();
     let bus = EventBus::new();
     let manager = SessionManager::new(storage.clone(), config.clone(), bus.clone());
-    let server = Arc::new(RpcServer::new(manager, storage, bus, std::process::id()));
+    let shutdown = tokio_util::sync::CancellationToken::new();
+    let server = Arc::new(RpcServer::new(
+        manager,
+        storage,
+        bus,
+        std::process::id(),
+        shutdown,
+    ));
     let socket_clone = socket.clone();
-    let server_handle = tokio::spawn(async move {
-        server.serve(&socket_clone).await
-    });
+    let server_handle = tokio::spawn(async move { server.serve(&socket_clone).await });
 
     // Дать серверу время стартовать.
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -71,7 +79,13 @@ async fn rpc_session_create_list_attach() {
     use vpsagent_daemon::RpcClient;
     let client = RpcClient::connect(&socket).await.unwrap();
     let resp = client
-        .request(&Request::SessionCreate { cwd: "/tmp".into(), model: None }, &mut |_| {})
+        .request(
+            &Request::SessionCreate {
+                cwd: "/tmp".into(),
+                model: None,
+            },
+            &mut |_| {},
+        )
         .await
         .unwrap();
     let session = match resp {
@@ -92,11 +106,21 @@ async fn rpc_session_create_list_attach() {
 
     // Attach к сессии.
     let attach_resp = client
-        .request(&Request::SessionAttach { session_id: session.id, last_seq: None }, &mut |_| {})
+        .request(
+            &Request::SessionAttach {
+                session_id: session.id,
+                last_seq: None,
+            },
+            &mut |_| {},
+        )
         .await
         .unwrap();
     match attach_resp {
-        Response::SessionAttach { messages, agents, last_seq } => {
+        Response::SessionAttach {
+            messages,
+            agents,
+            last_seq,
+        } => {
             assert!(messages.is_empty());
             assert!(agents.is_empty());
             assert_eq!(last_seq, 0);

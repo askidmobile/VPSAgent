@@ -91,7 +91,8 @@ impl RpcClient {
             if let Some(err) = rpc.error {
                 anyhow::bail!("RPC {}: {}", err.code, err.message);
             }
-            let resp: Response = serde_json::from_value(rpc.result.unwrap_or(serde_json::Value::Null))?;
+            let resp: Response =
+                serde_json::from_value(rpc.result.unwrap_or(serde_json::Value::Null))?;
             return Ok(resp);
         }
     }
@@ -106,10 +107,7 @@ impl RpcClient {
     }
 
     /// Читать поток событий (после SessionAttach) в callback.
-    pub async fn drain_events(
-        &self,
-        mut on_event: impl FnMut(Event),
-    ) -> anyhow::Result<()> {
+    pub async fn drain_events(&self, mut on_event: impl FnMut(Event)) -> anyhow::Result<()> {
         let mut buf = String::new();
         loop {
             buf.clear();

@@ -15,10 +15,16 @@ pub struct Validation {
 
 impl Validation {
     fn ok() -> Self {
-        Self { valid: true, errors: vec![] }
+        Self {
+            valid: true,
+            errors: vec![],
+        }
     }
     fn fail(err: String) -> Self {
-        Self { valid: false, errors: vec![err] }
+        Self {
+            valid: false,
+            errors: vec![err],
+        }
     }
 }
 
@@ -34,19 +40,28 @@ pub fn validate_generated(skill: &Skill) -> Validation {
         .chars()
         .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
     {
-        errors.push(format!("имя '{}' содержит недопустимые символы", skill.name));
+        errors.push(format!(
+            "имя '{}' содержит недопустимые символы",
+            skill.name
+        ));
     }
 
     // description: 10..=500 символов.
     if skill.description.len() < 10 || skill.description.len() > 500 {
-        errors.push(format!("описание скилла должно быть 10..500 символов, сейчас {}", skill.description.len()));
+        errors.push(format!(
+            "описание скилла должно быть 10..500 символов, сейчас {}",
+            skill.description.len()
+        ));
     }
 
     // body: не пустое, минимум 50 символов, содержит хоть одну секцию.
     if skill.body.trim().is_empty() {
         errors.push("тело скилла пустое".into());
     } else if skill.body.len() < 50 {
-        errors.push(format!("тело слишком короткое: {} символов (<50)", skill.body.len()));
+        errors.push(format!(
+            "тело слишком короткое: {} символов (<50)",
+            skill.body.len()
+        ));
     }
 
     // Инструкция о том, КАК вызывать (минимум одна секция ## или ## Trigger/When to Use).
@@ -58,13 +73,14 @@ pub fn validate_generated(skill: &Skill) -> Validation {
     if errors.is_empty() {
         Validation::ok()
     } else {
-        Validation { valid: false, errors }
+        Validation {
+            valid: false,
+            errors,
+        }
     }
 }
 
 /// Собрать стандартный шаблон SKILL.md (для самогенерации).
 pub fn template(name: &str, description: &str, body: &str) -> String {
-    format!(
-        "---\nname: {name}\ndescription: {description}\n---\n\n{body}\n"
-    )
+    format!("---\nname: {name}\ndescription: {description}\n---\n\n{body}\n")
 }

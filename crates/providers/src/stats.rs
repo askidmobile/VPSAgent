@@ -66,10 +66,7 @@ impl ModelStatsRegistry {
     }
 
     pub fn record(&mut self, m: &ModelRunMetric) {
-        self.by_model
-            .entry(m.model.clone())
-            .or_default()
-            .add(m);
+        self.by_model.entry(m.model.clone()).or_default().add(m);
     }
 
     /// Лучшая модель: наибольший pass_rate, при равенстве — меньшее время.
@@ -78,7 +75,10 @@ impl ModelStatsRegistry {
             .iter()
             .filter(|(_, s)| s.runs > 0)
             .max_by(|(_, a), (_, b)| {
-                let ar = a.pass_rate().partial_cmp(&b.pass_rate()).unwrap_or(std::cmp::Ordering::Equal);
+                let ar = a
+                    .pass_rate()
+                    .partial_cmp(&b.pass_rate())
+                    .unwrap_or(std::cmp::Ordering::Equal);
                 if ar != std::cmp::Ordering::Equal {
                     ar
                 } else {

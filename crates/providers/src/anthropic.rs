@@ -2,8 +2,8 @@
 
 use std::time::Duration;
 
-use futures::{Stream, StreamExt};
 use eventsource_stream::Eventsource;
+use futures::{Stream, StreamExt};
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -21,7 +21,11 @@ pub struct Anthropic {
 }
 
 impl Anthropic {
-    pub fn new(name: impl Into<String>, base_url: impl Into<String>, api_key: impl Into<String>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        base_url: impl Into<String>,
+        api_key: impl Into<String>,
+    ) -> Self {
         Self {
             name: name.into(),
             base_url: base_url.into(),
@@ -57,7 +61,10 @@ impl Anthropic {
                             ContentBlock::Text { text } => {
                                 content.push(json!({ "type": "text", "text": text }));
                             }
-                            ContentBlock::Image { data_base64, media_type } => {
+                            ContentBlock::Image {
+                                data_base64,
+                                media_type,
+                            } => {
                                 content.push(json!({
                                     "type": "image",
                                     "source": {
@@ -100,7 +107,12 @@ impl Anthropic {
                     // Tool-результаты: ОДИН user с массивом tool_result (требование API).
                     let mut tool_results: Vec<Value> = vec![];
                     for block in &msg.content {
-                        if let ContentBlock::ToolResult { tool_use_id, content, is_error } = block {
+                        if let ContentBlock::ToolResult {
+                            tool_use_id,
+                            content,
+                            is_error,
+                        } = block
+                        {
                             let mut b = json!({
                                 "type": "tool_result",
                                 "tool_use_id": tool_use_id,

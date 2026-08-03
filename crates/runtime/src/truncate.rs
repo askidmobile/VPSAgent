@@ -22,7 +22,10 @@ pub fn apply(content: &str, temp_dir: &Path) -> String {
         return content.to_string();
     }
     let mut path = temp_dir.to_path_buf();
-    path.push(format!("tool-output-{}.txt", chrono::Utc::now().timestamp_millis()));
+    path.push(format!(
+        "tool-output-{}.txt",
+        chrono::Utc::now().timestamp_millis()
+    ));
     if std::fs::write(&path, content).is_ok() {
         format!(
             "{}…\n\n[вывод обрезан: {} символов. Полный вывод: {}]",

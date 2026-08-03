@@ -38,8 +38,19 @@ impl Storage {
                     last_action=excluded.last_action,
                     tokens_input=excluded.tokens_input,
                     tokens_output=excluded.tokens_output",
-                rusqlite::params![id, session_id, parent_id, name, kind, status,
-                                  last_action, tokens_in, tokens_out, model, created],
+                rusqlite::params![
+                    id,
+                    session_id,
+                    parent_id,
+                    name,
+                    kind,
+                    status,
+                    last_action,
+                    tokens_in,
+                    tokens_out,
+                    model,
+                    created
+                ],
             )?;
             Ok(())
         })

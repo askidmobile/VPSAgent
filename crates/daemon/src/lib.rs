@@ -7,15 +7,15 @@ pub mod broadcast;
 pub mod client;
 pub mod daemonize;
 pub mod lock;
-pub mod session_manager;
 pub mod server;
+pub mod session_manager;
 
 pub use broadcast::EventBus;
 pub use client::RpcClient;
 pub use daemonize::Daemonize;
 pub use lock::DaemonLock;
-pub use session_manager::SessionManager;
 pub use server::RpcServer;
+pub use session_manager::SessionManager;
 
 use std::sync::Arc;
 

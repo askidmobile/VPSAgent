@@ -94,7 +94,9 @@ async fn check_ssrf(url: &str) -> Result<(), String> {
         return Ok(());
     }
     // Резолв домена; проверяем каждый адрес.
-    let port = parsed.port().unwrap_or(if parsed.scheme() == "https" { 443 } else { 80 });
+    let port = parsed
+        .port()
+        .unwrap_or(if parsed.scheme() == "https" { 443 } else { 80 });
     // lookup_host возвращает итератор, привязанный к `host`; собираем в owned Vec
     // через отдельную область видимости, чтобы избежать borrow-проблем.
     let host_owned = host.clone();
@@ -150,9 +152,17 @@ fn strip_html(html: &str) -> String {
             continue;
         }
         for ch in word.chars() {
-            if ch == '<' { in_tag = true; continue; }
-            if ch == '>' { in_tag = false; continue; }
-            if !in_tag { out.push(ch); }
+            if ch == '<' {
+                in_tag = true;
+                continue;
+            }
+            if ch == '>' {
+                in_tag = false;
+                continue;
+            }
+            if !in_tag {
+                out.push(ch);
+            }
         }
         out.push(' ');
     }

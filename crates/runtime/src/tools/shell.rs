@@ -67,6 +67,10 @@ impl Tool for Shell {
         if is_error {
             combined.push_str(&format!("\nexit: {}", out.status.code().unwrap_or(-1)));
         }
-        if is_error { ToolOutput::err(combined) } else { ToolOutput::ok(combined) }
+        if is_error {
+            ToolOutput::err(combined)
+        } else {
+            ToolOutput::ok(combined)
+        }
     }
 }

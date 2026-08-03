@@ -55,7 +55,9 @@ fn daemonize_unix(log_file: &Path) -> Result<Daemonize> {
     }
     if pid > 0 {
         // Родитель: child уходит в фон.
-        return Ok(Daemonize::Parent { child_pid: pid as u32 });
+        return Ok(Daemonize::Parent {
+            child_pid: pid as u32,
+        });
     }
     // Дальше — только child.
 
@@ -78,7 +80,10 @@ fn daemonize_unix(log_file: &Path) -> Result<Daemonize> {
     let dev_null = CString::new("/dev/null").unwrap();
     let null_fd = unsafe { libc::open(dev_null.as_ptr(), libc::O_RDONLY) };
     if null_fd < 0 {
-        return Err(Error::Other(anyhow::anyhow!("open /dev/null failed: {}", errno())));
+        return Err(Error::Other(anyhow::anyhow!(
+            "open /dev/null failed: {}",
+            errno()
+        )));
     }
     let log_file_handle = OpenOptions::new()
         .create(true)
@@ -91,13 +96,22 @@ fn daemonize_unix(log_file: &Path) -> Result<Daemonize> {
     // dup2 атомарно подменяет fd 0/1/2; закрываем исходные fd после.
     unsafe {
         if libc::dup2(null_fd, 0) < 0 {
-            return Err(Error::Other(anyhow::anyhow!("dup2 stdin failed: {}", errno())));
+            return Err(Error::Other(anyhow::anyhow!(
+                "dup2 stdin failed: {}",
+                errno()
+            )));
         }
         if libc::dup2(log_fd, 1) < 0 {
-            return Err(Error::Other(anyhow::anyhow!("dup2 stdout failed: {}", errno())));
+            return Err(Error::Other(anyhow::anyhow!(
+                "dup2 stdout failed: {}",
+                errno()
+            )));
         }
         if libc::dup2(log_fd, 2) < 0 {
-            return Err(Error::Other(anyhow::anyhow!("dup2 stderr failed: {}", errno())));
+            return Err(Error::Other(anyhow::anyhow!(
+                "dup2 stderr failed: {}",
+                errno()
+            )));
         }
         // Закрываем оригинальные fd (0/1/2 теперь дубликаты).
         if null_fd > 2 {

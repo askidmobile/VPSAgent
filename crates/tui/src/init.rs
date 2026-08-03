@@ -9,8 +9,10 @@ use std::io::stdout;
 
 use anyhow::Result;
 use crossterm::event::{Event as CrosstermEvent, EventStream, KeyCode, KeyEvent, KeyModifiers};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::execute;
+use crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+};
 use futures::StreamExt;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout};
@@ -125,7 +127,8 @@ impl InitState {
                         self.step = 1;
                     }
                     Pick::OauthChatGpt => {
-                        self.status = "OAuth ChatGPT: вставьте токен из браузера (Enter — дальше)".into();
+                        self.status =
+                            "OAuth ChatGPT: вставьте токен из браузера (Enter — дальше)".into();
                         self.step = 1;
                     }
                     Pick::Custom => {
@@ -146,7 +149,8 @@ impl InitState {
                             }
                             self.input.clear();
                             self.field_idx = 1;
-                            self.status = "введите base_url (например http://localhost:8000/v1)".into();
+                            self.status =
+                                "введите base_url (например http://localhost:8000/v1)".into();
                         }
                         1 => {
                             self.custom_url = self.input.trim().to_string();
@@ -294,7 +298,11 @@ fn save_config(state: &InitState) -> Result<Config> {
         state.custom_key.clone()
     };
     // Обновить/добавить endpoint.
-    if let Some(existing) = config.endpoints.iter_mut().find(|e| e.name == endpoint.name) {
+    if let Some(existing) = config
+        .endpoints
+        .iter_mut()
+        .find(|e| e.name == endpoint.name)
+    {
         *existing = endpoint;
     } else {
         config.endpoints.push(endpoint);
@@ -318,7 +326,10 @@ fn load_existing_secrets(config: &Config) -> HashMap<String, String> {
 }
 
 fn handle_key(ev: CrosstermEvent, state: &mut InitState) -> bool {
-    let CrosstermEvent::Key(KeyEvent { code, modifiers, .. }) = ev else {
+    let CrosstermEvent::Key(KeyEvent {
+        code, modifiers, ..
+    }) = ev
+    else {
         return true;
     };
     match state.step {
@@ -380,9 +391,12 @@ fn render(f: &mut ratatui::Frame, state: &InitState) {
         ])
         .split(f.area());
 
-    let title = Paragraph::new(Line::from(vec![
-        Span::styled(" Инициализация VPSAgent ", Style::default().add_modifier(Modifier::BOLD).fg(Color::Cyan)),
-    ]))
+    let title = Paragraph::new(Line::from(vec![Span::styled(
+        " Инициализация VPSAgent ",
+        Style::default()
+            .add_modifier(Modifier::BOLD)
+            .fg(Color::Cyan),
+    )]))
     .block(Block::default().borders(Borders::ALL));
     f.render_widget(title, chunks[0]);
 
@@ -397,7 +411,12 @@ fn render(f: &mut ratatui::Frame, state: &InitState) {
         }
         1 => {
             if matches!(state.pick, Some(Pick::Custom)) {
-                let labels = ["название провайдера", "base_url", "API-ключ", "протокол (1/2/3)"];
+                let labels = [
+                    "название провайдера",
+                    "base_url",
+                    "API-ключ",
+                    "протокол (1/2/3)",
+                ];
                 format!(
                     "Custom (шаг {}/4): {}\n\n> {}",
                     state.field_idx + 1,
@@ -422,7 +441,11 @@ fn render(f: &mut ratatui::Frame, state: &InitState) {
             format!(
                 "Дефолтная модель:\n\n{}\n\n> {}",
                 models_list,
-                if state.input.is_empty() { &state.default_model } else { &state.input }
+                if state.input.is_empty() {
+                    &state.default_model
+                } else {
+                    &state.input
+                }
             )
         }
         3 => "Сохранение…".to_string(),

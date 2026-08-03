@@ -120,7 +120,10 @@ impl Tool for Todo {
         })
     }
     async fn run(&self, input: Value, ctx: &ToolContext) -> ToolOutput {
-        let action = input.get("action").and_then(|v| v.as_str()).unwrap_or("list");
+        let action = input
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("list");
         let state = ctx.todo_state.0.clone();
         let mut list = state.lock().await;
         match action {

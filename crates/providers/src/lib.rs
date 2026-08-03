@@ -42,7 +42,10 @@ pub fn make_provider(endpoint: &vpsagent_core::ModelEndpoint, api_key: &str) -> 
 }
 
 /// Получить endpoint по имени модели из конфига (удобная обёртка).
-pub fn endpoint_for_model<'a>(config: &'a Config, model: &str) -> Option<&'a vpsagent_core::ModelEndpoint> {
+pub fn endpoint_for_model<'a>(
+    config: &'a Config,
+    model: &str,
+) -> Option<&'a vpsagent_core::ModelEndpoint> {
     config.endpoint_for_model(model)
 }
 
@@ -96,11 +99,7 @@ pub trait Provider: Send + Sync {
     fn stream(
         &self,
         req: ChatRequest,
-    ) -> std::pin::Pin<
-        Box<
-            dyn Stream<Item = Result<StreamChunk>> + Send,
-        >,
-    >;
+    ) -> std::pin::Pin<Box<dyn Stream<Item = Result<StreamChunk>> + Send>>;
 }
 
 /// Экспоненциальный backoff для ретраев API-ошибок (429/5xx).

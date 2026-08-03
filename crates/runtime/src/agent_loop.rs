@@ -56,7 +56,12 @@ pub struct AgentParams {
 const MAX_TURNS: u32 = 30;
 
 /// Создать сообщение (хелпер, т.к. Message в core без конструктора).
-fn new_message(session_id: Id, agent_id: Option<Id>, role: Role, content: Vec<ContentBlock>) -> Message {
+fn new_message(
+    session_id: Id,
+    agent_id: Option<Id>,
+    role: Role,
+    content: Vec<ContentBlock>,
+) -> Message {
     Message {
         id: Uuid::new_v4(),
         session_id,
@@ -105,7 +110,11 @@ pub async fn run_agent(mut params: AgentParams) -> Result<()> {
             .as_ref()
             .map(|_| "sub".to_string())
             .unwrap_or_else(|| "main".to_string()),
-        kind: if is_main { AgentKind::Main } else { AgentKind::Sub },
+        kind: if is_main {
+            AgentKind::Main
+        } else {
+            AgentKind::Sub
+        },
         status: AgentStatus::Working,
         last_action: "старт".into(),
         tokens: TokenUsage::default(),
@@ -374,8 +383,8 @@ pub async fn run_agent(mut params: AgentParams) -> Result<()> {
             ..info
         })
         .await;
-    let _ = params
-        .event_tx
-        .send(EventKind::AgentFinished { agent_id: params.agent_id });
+    let _ = params.event_tx.send(EventKind::AgentFinished {
+        agent_id: params.agent_id,
+    });
     loop_result
 }

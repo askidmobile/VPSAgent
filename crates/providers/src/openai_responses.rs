@@ -6,8 +6,8 @@
 
 use std::time::Duration;
 
-use futures::{Stream, StreamExt};
 use eventsource_stream::Eventsource;
+use futures::{Stream, StreamExt};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -25,7 +25,11 @@ pub struct OpenaiResponses {
 }
 
 impl OpenaiResponses {
-    pub fn new(name: impl Into<String>, base_url: impl Into<String>, api_key: impl Into<String>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        base_url: impl Into<String>,
+        api_key: impl Into<String>,
+    ) -> Self {
         Self {
             name: name.into(),
             base_url: base_url.into(),
@@ -57,7 +61,10 @@ impl OpenaiResponses {
                             ContentBlock::Text { text } => {
                                 input.push(json!({ "role": "user", "content": text }));
                             }
-                            ContentBlock::Image { data_base64, media_type } => {
+                            ContentBlock::Image {
+                                data_base64,
+                                media_type,
+                            } => {
                                 input.push(json!({
                                     "role": "user",
                                     "content": [{
@@ -76,7 +83,11 @@ impl OpenaiResponses {
                             ContentBlock::Text { text } => {
                                 input.push(json!({ "role": "assistant", "content": text }));
                             }
-                            ContentBlock::ToolUse { id, name, input: ti } => {
+                            ContentBlock::ToolUse {
+                                id,
+                                name,
+                                input: ti,
+                            } => {
                                 input.push(json!({
                                     "role": "assistant",
                                     "content": [{
@@ -94,7 +105,12 @@ impl OpenaiResponses {
                 }
                 Role::Tool => {
                     for block in &msg.content {
-                        if let ContentBlock::ToolResult { tool_use_id, content, .. } = block {
+                        if let ContentBlock::ToolResult {
+                            tool_use_id,
+                            content,
+                            ..
+                        } = block
+                        {
                             input.push(json!({
                                 "type": "function_call_output",
                                 "call_id": tool_use_id,

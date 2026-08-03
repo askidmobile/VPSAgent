@@ -3,9 +3,7 @@
 use chrono::Utc;
 use serde_json::from_str;
 use uuid::Uuid;
-use vpsagent_core::{
-    ContentBlock, Event, EventKind, Id, Message, Role, TokenUsage,
-};
+use vpsagent_core::{ContentBlock, Event, EventKind, Id, Message, Role, TokenUsage};
 
 use crate::Storage;
 
@@ -104,7 +102,14 @@ impl Storage {
                 tx.execute(
                     "INSERT INTO events (session_id, agent_id, seq, kind, payload, created_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                    rusqlite::params![session_id_str, agent_id_str, seq, kind_str, payload_str, created_for_closure],
+                    rusqlite::params![
+                        session_id_str,
+                        agent_id_str,
+                        seq,
+                        kind_str,
+                        payload_str,
+                        created_for_closure
+                    ],
                 )?;
                 tx.commit()?;
                 Ok(seq)
@@ -121,11 +126,7 @@ impl Storage {
     }
 
     /// События сессии начиная с last_seq+1 (для replay при attach).
-    pub async fn events_since(
-        &self,
-        session_id: Id,
-        last_seq: u64,
-    ) -> anyhow::Result<Vec<Event>> {
+    pub async fn events_since(&self, session_id: Id, last_seq: u64) -> anyhow::Result<Vec<Event>> {
         self.call(move |conn| {
             let mut stmt = conn.prepare(
                 "SELECT session_id, agent_id, seq, kind, payload, created_at

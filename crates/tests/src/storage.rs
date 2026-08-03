@@ -1,7 +1,8 @@
 //! Тесты хранилища: сессии, сообщения, события (append + replay).
 
 use vpsagent_core::{ContentBlock, EventKind, Role, SessionStatus};
-use vpsagent_storage::Storage;fn tmp_db() -> std::path::PathBuf {
+use vpsagent_storage::Storage;
+fn tmp_db() -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("vpsagent-test-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     dir.join("test.db")
@@ -12,7 +13,10 @@ async fn create_and_list_session() {
     let db = tmp_db();
     let storage = Storage::open(&db).await.unwrap();
 
-    let s1 = storage.create_session("/tmp", Some("gpt-4o-mini")).await.unwrap();
+    let s1 = storage
+        .create_session("/tmp", Some("gpt-4o-mini"))
+        .await
+        .unwrap();
     assert_eq!(s1.cwd, "/tmp");
     assert_eq!(s1.model.as_deref(), Some("gpt-4o-mini"));
     assert_eq!(s1.status, SessionStatus::Active);
@@ -39,7 +43,9 @@ async fn insert_and_list_messages() {
         session_id: session.id,
         agent_id: None,
         role: Role::User,
-        content: vec![ContentBlock::Text { text: "привет".into() }],
+        content: vec![ContentBlock::Text {
+            text: "привет".into(),
+        }],
         tokens: None,
         created_at: chrono::Utc::now(),
     };

@@ -7,11 +7,7 @@ use vpsagent_core::{Id, Session, SessionStatus};
 use crate::Storage;
 
 impl Storage {
-    pub async fn create_session(
-        &self,
-        cwd: &str,
-        model: Option<&str>,
-    ) -> anyhow::Result<Session> {
+    pub async fn create_session(&self, cwd: &str, model: Option<&str>) -> anyhow::Result<Session> {
         let id = Uuid::new_v4();
         let now = Utc::now();
         let title = format!("Session {}", now.format("%Y-%m-%d %H:%M"));
@@ -109,9 +105,7 @@ impl Storage {
                         .unwrap_or(now()),
                 })
             })?;
-            rows.next()
-                .transpose()
-                .map_err(tokio_rusqlite::Error::from)
+            rows.next().transpose().map_err(tokio_rusqlite::Error::from)
         })
         .await
     }

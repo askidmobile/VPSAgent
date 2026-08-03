@@ -9,7 +9,9 @@ fn msg(text: &str) -> Message {
         session_id: uuid::Uuid::nil(),
         agent_id: None,
         role: Role::User,
-        content: vec![ContentBlock::Text { text: text.to_string() }],
+        content: vec![ContentBlock::Text {
+            text: text.to_string(),
+        }],
         tokens: None,
         created_at: chrono::Utc::now(),
     }
@@ -41,7 +43,9 @@ fn compact_reduces_large_context() {
     );
     // Должен быть маркер сжатия.
     assert!(
-        compacted.iter().any(|m| m.content.iter().any(|b| matches!(b, ContentBlock::Text { text } if text.contains("сжато компактификацией")))),
+        compacted.iter().any(|m| m.content.iter().any(
+            |b| matches!(b, ContentBlock::Text { text } if text.contains("сжато компактификацией"))
+        )),
         "должен быть маркер сжатия"
     );
 }

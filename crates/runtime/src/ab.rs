@@ -74,7 +74,11 @@ impl AbRunner {
     /// Зафиксировать РЕАЛЬНУЮ метрику прогона модели (после настоящего запуска).
     /// Единственная точка записи в stats — сюда попадают только фактические
     /// измерения, не синтетика.
-    pub async fn record_real_result(&self, run_id: Id, metric: ModelRunMetric) -> anyhow::Result<()> {
+    pub async fn record_real_result(
+        &self,
+        run_id: Id,
+        metric: ModelRunMetric,
+    ) -> anyhow::Result<()> {
         tracing::info!(run_id=%run_id, model=%metric.model, "A/B: реальная метрика");
         self.stats.lock().await.record(&metric);
         Ok(())

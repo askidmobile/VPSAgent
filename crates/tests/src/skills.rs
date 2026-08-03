@@ -1,6 +1,6 @@
 //! Тесты скиллов: парсер SKILL.md, строгий валидатор, create_skill.
 
-use vpsagent_runtime::{Skill, SkillRegistry, validate_generated};
+use vpsagent_runtime::{validate_generated, Skill, SkillRegistry};
 
 #[test]
 fn parse_skill_with_frontmatter() {
@@ -25,7 +25,10 @@ description: нет имени
 ---
 тело";
     let err = Skill::parse(md, std::path::PathBuf::from("x.md")).unwrap_err();
-    assert!(err.to_string().contains("name"), "ошибка должна упоминать name: {err}");
+    assert!(
+        err.to_string().contains("name"),
+        "ошибка должна упоминать name: {err}"
+    );
 }
 
 #[test]

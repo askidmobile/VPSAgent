@@ -89,7 +89,8 @@ fn split_frontmatter(content: &str) -> anyhow::Result<(String, String)> {
             break;
         }
     }
-    let end_idx = end_idx.ok_or_else(|| anyhow::anyhow!("frontmatter не закрыт: нет второй '---'"))?;
+    let end_idx =
+        end_idx.ok_or_else(|| anyhow::anyhow!("frontmatter не закрыт: нет второй '---'"))?;
     // frontmatter = строки 1..=end_idx-1 (исключая --- строки).
     let frontmatter = lines[1..end_idx].join("\n");
     // body = всё после второй --- (end_idx + 1...).

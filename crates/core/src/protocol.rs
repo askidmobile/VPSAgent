@@ -275,3 +275,85 @@ pub struct RpcError {
 
 /// Идентификатор запроса (для мультиплексации).
 pub type RequestId = Uuid;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Serde round-trip для `Request::DaemonStop` — FR-006: метод должен
+    /// корректно сериализоваться/десериализоваться через JSON-RPC-протокол.
+    #[test]
+    fn daemon_stop_serde_roundtrip() {
+        let req = Request::DaemonStop;
+        // Request сериализуется с #[serde(tag = "method", content = "params")].
+        let json = serde_json::to_string(&req).unwrap();
+        // method = "daemon_stop" (snake_case), params — null (unit variant).
+        assert!(
+            json.contains("\"method\":\"daemon_stop\""),
+            "ожидался method=daemon_stop в: {json}"
+        );
+        let back: Request = serde_json::from_str(&json).unwrap();
+        assert!(matches!(back, Request::DaemonStop), "ожидался DaemonStop");
+    }
+
+    /// `Request::DaemonStatus` — round-trip (существующий метод, используется
+    /// командой `vpsagent daemon status`).
+    #[test]
+    fn daemon_status_serde_roundtrip() {
+        let req = Request::DaemonStatus;
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"method\":\"daemon_status\""), "в: {json}");
+        let back: Request = serde_json::from_str(&json).unwrap();
+        assert!(matches!(back, Request::DaemonStatus));
+    }
+
+    /// `Request::DaemonRestart` — round-trip (существующая заглушка D4).
+    #[test]
+    fn daemon_restart_serde_roundtrip() {
+        let req = Request::DaemonRestart;
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"method\":\"daemon_restart\""), "в: {json}");
+        let back: Request = serde_json::from_str(&json).unwrap();
+        assert!(matches!(back, Request::DaemonRestart));
+    }
+
+    /// `DaemonStatus` (структура ответа) — round-trip: поля сохраняются.
+    #[test]
+    fn daemon_status_struct_roundtrip() {
+        use crate::types::DaemonStatus;
+        let s = DaemonStatus {
+            version: "0.1.0".into(),
+            pid: 12345,
+            uptime_secs: 3600,
+            sessions: 3,
+            agents: 5,
+        };
+        let json = serde_json::to_string(&s).unwrap();
+        let back: DaemonStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.version, "0.1.0");
+        assert_eq!(back.pid, 12345);
+        assert_eq!(back.uptime_secs, 3600);
+        assert_eq!(back.sessions, 3);
+        assert_eq!(back.agents, 5);
+    }
+
+    /// `Response::DaemonStatus` — round-trip через JSON-RPC-обёртку.
+    #[test]
+    fn response_daemon_status_roundtrip() {
+        use crate::types::DaemonStatus;
+        let resp = Response::DaemonStatus(DaemonStatus {
+            version: "0.1.0".into(),
+            pid: 99,
+            uptime_secs: 10,
+            sessions: 0,
+            agents: 0,
+        });
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"result\":\"daemon_status\""), "в: {json}");
+        let back: Response = serde_json::from_str(&json).unwrap();
+        match back {
+            Response::DaemonStatus(s) => assert_eq!(s.pid, 99),
+            other => panic!("ожидался DaemonStatus, получили {other:?}"),
+        }
+    }
+}

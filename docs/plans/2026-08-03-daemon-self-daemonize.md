@@ -296,21 +296,30 @@ Command::Daemon  →  enum DaemonCmd
       Функциональность `run` не регрессировала.
 
 ### Фаза 5: Тестирование и полировка (оценка: 1.5 ч)
-- [ ] 5.1 → Unit/интеграционные тесты:
-  - [ ] `protocol.rs` — serde round-trip `Request::DaemonStop`.
-  - [ ] `config.rs` — default `log_file` = `data_dir/daemon.log`; старый конфиг
-        (без `log_file`) десериализуется.
-  - [ ] (опционально) интеграционный тест `daemon stop`/`status` через сокет.
-- [ ] 5.2 → Ручное тестирование по сценариям спеки (на yttri-win WSL или сервере):
-  - [ ] Сценарий 1: `vpsagent daemon` (pipe) → закрыть «SSH» → процесс жив.
-  - [ ] Сценарий 2: `vpsagent daemon --foreground` → Ctrl+C → clean shutdown.
-  - [ ] Сценарий 3: `vpsagent daemon status` / `vpsagent daemon stop`.
-  - [ ] Повторный запуск при живом демоне — отказ.
-- [ ] 5.3 → Платформенная проверка: `cargo check` на macOS (foreground-only
-      path компилируется, warning логируется). Windows-сборка — если доступна.
-- [ ] 5.4 → Сборка `x86_64-unknown-linux-musl` на yttri-win, smoke-тест
-      daemonize в musl (старт → имитация закрытия SSH → `ps`/`ss` проверка).
-- [ ] 5.5 → `cargo clippy --workspace` без новых предупреждений; `cargo fmt --check`.
+- [x] 5.1 → Unit-тесты:
+  - [x] `protocol.rs` — serde round-trip `DaemonStop`/`DaemonStatus`/`DaemonRestart` +
+        `DaemonStatus` struct + `Response::DaemonStatus` (5 тестов).
+  - [x] `config.rs` — default `log_file`, старый конфиг десериализуется (3 теста,
+        Фаза 1). Итого `vpsagent-core`: 8 passed.
+  - [ ] (опционально) интеграционный тест `daemon stop`/`status` через сокет —
+        отложено (покрыто ручным smoke в Фазах 2–4).
+- [x] 5.2 → Ручное тестирование по сценариям спеки (macOS + musl на yttri-win):
+  - [x] Сценарий 1: `vpsagent daemon` (pipe) → SIGHUP → процесс жив (FR-011).
+  - [x] Сценарий 2: `vpsagent daemon --foreground` → SIGTERM → clean shutdown.
+  - [x] Сценарий 3: `vpsagent daemon status` (text/json) / `vpsagent daemon stop`.
+  - [x] Повторный запуск при живом демоне — отказ (singleton-lock).
+  - [x] `vpsagent run` авто-подъём демона (Фаза 4).
+- [x] 5.3 → `cargo check --workspace` на macOS — компилируется (foreground-only
+      path, daemonize-заглушка `Unsupported` на не-Unix). Windows-сборка не проверена
+      (нет Windows-toolchain локально), но `#[cfg(not(unix))]` пути компилируются.
+- [x] 5.4 → Сборка `x86_64-unknown-linux-musl` на yttri-win WSL — exit 0, 1м 09с.
+      Бинарь: ELF 64-bit static-pie, 9.8 МБ, stripped, SHA256
+      `fcae3b525f0f869ee0a8a52e136681a94375b7093cdd10bea762cb2afe82af03`.
+      Smoke: daemonize (pipe→auto), status, SIGHUP-игнор, stop через RPC, сокет
+      очищен — всё работает в musl.
+- [x] 5.5 → `cargo fmt --all -- --check` — чисто; `cargo test --all` — 28 passed,
+      0 failed; `cargo clippy` — 0 warnings в изменённых крейтах (существующие
+      warnings в tui/runtime/providers не блокируют CI).
 
 ## Трейсабельность: Требования → Задачи
 

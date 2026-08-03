@@ -2,14 +2,19 @@
 //!
 //! Подкоманды:
 //!   `vpsagent`           — интерактивный TUI (attach к демону/новая сессия) [Фаза 1: упрощённый вывод]
-//!   `vpsagent daemon`    — запустить headless-демон
+//!   `vpsagent daemon`    — запустить headless-демон (по умолчанию daemonize на Unix, FR-001)
+//!   `vpsagent daemon stop`    — graceful stop демона через RPC (FR-006)
+//!   `vpsagent daemon status`  — статус демона через RPC (FR-007)
 //!   `vpsagent run "задача"` — headless-прогон: создать сессию, отправить задачу, ждать завершения, exit code
 //!   `vpsagent attach [id]`  — подключиться к существующей сессии демона
+
+use std::io::IsTerminal;
+use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use vpsagent_core::{Config, EventKind, Request, Response};
-use vpsagent_daemon::RpcClient;
+use vpsagent_daemon::{Daemonize, RpcClient};
 
 #[derive(Parser)]
 #[command(name = "vpsagent", version, about = "Агентская CLI-система на Rust")]
@@ -20,8 +25,23 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Запустить headless-демон.
-    Daemon,
+    /// Запустить headless-демон или управлять его жизненным циклом.
+    Daemon {
+        /// Подкоманда управления (stop/status). Без неё — запуск демона.
+        #[command(subcommand)]
+        action: Option<DaemonCmd>,
+        /// Форсировать foreground: логи в stderr, не отсоединяться от терминала.
+        /// Имеет приоритет над `--daemonize` и авто-определением.
+        #[arg(long)]
+        foreground: bool,
+        /// Форсировать daemonize (отсоединиться от терминала, логи в файл).
+        /// Имеет приоритет над авто-определением, но ниже `--foreground`.
+        #[arg(long)]
+        daemonize: bool,
+        /// Переопределить файл лога демона при daemonize (FR-003).
+        #[arg(long)]
+        log_file: Option<PathBuf>,
+    },
     /// Headless-прогон задачи: создать сессию, отправить, дождаться, exit code.
     Run {
         /// Задача (текст).
@@ -44,8 +64,99 @@ enum Command {
     Init,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+/// Подкоманды управления жизненным циклом демона (`vpsagent daemon <cmd>`).
+#[derive(Subcommand)]
+enum DaemonCmd {
+    /// Graceful stop демона через RPC (FR-006).
+    Stop,
+    /// Статус демона: version/pid/uptime/сессии/агенты (FR-007).
+    Status {
+        /// Формат вывода: text | json (FR-012).
+        #[arg(long, default_value = "text")]
+        output_format: String,
+    },
+}
+
+fn main() -> Result<()> {
+    let cli = Cli::parse();
+    let mut config = Config::load()?;
+
+    // tracing-подписчик ставится в runtime каждого процесса; для daemon-режима
+    // запуска ниже — отдельный путь (см. run_daemon).
+
+    // Специальный путь: `vpsagent daemon` (запуск) может потребовать daemonize
+    // (fork) ДО создания tokio-рантайма — иначе fork унаследует epoll/kqueue fd
+    // и в child упадёт "failed to wake I/O driver: Bad file descriptor".
+    // Поэтому обрабатываем запуск демона отдельно, без `#[tokio::main]`.
+    if let Some(Command::Daemon { action: None, foreground, daemonize, log_file }) = &cli.command {
+        return run_daemon_sync(config, *foreground, *daemonize, log_file.clone());
+    }
+
+    // Все остальные команды — в tokio runtime.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    rt.block_on(async move {
+        init_tracing();
+
+        // Автозапуск инициализации при первом запуске (нет секретов) — только интерактивный терминал.
+        // Не запускаем для daemon stop/status — они не требуют секретов.
+        let needs_init = matches!(
+            cli.command,
+            None | Some(Command::Run { .. }) | Some(Command::Attach { .. }) | Some(Command::McpServe) | Some(Command::Init)
+        ) && !matches!(cli.command, Some(Command::Daemon { action: Some(_), .. }));
+        if needs_init && config.needs_init() && std::io::stdin().is_terminal() {
+            config = vpsagent_tui::run_init().await?;
+        }
+
+        match cli.command {
+            None => {
+                // Без подкоманды — TUI (если терминал). Иначе упрощённый текстовый attach.
+                ensure_daemon(&config).await?;
+                let cwd = std::env::current_dir()?.to_string_lossy().to_string();
+                if std::io::stdin().is_terminal() {
+                    vpsagent_tui::run(&config, &cwd).await
+                } else {
+                    run_attach(&config, None).await
+                }
+            }
+            Some(Command::Daemon { action, .. }) => match action.unwrap() {
+                DaemonCmd::Stop => daemon_stop(&config).await,
+                DaemonCmd::Status { output_format } => {
+                    daemon_status(&config, &output_format).await
+                }
+            },
+            Some(Command::Run { task, model, output_format }) => {
+                run_headless(&config, &task, model, &output_format).await
+            }
+            Some(Command::Attach { session_id }) => {
+                run_attach(&config, session_id.as_deref()).await
+            }
+            Some(Command::McpServe) => {
+                // MCP-сервер: требует запущенный демон (для storage/session).
+                ensure_daemon(&config).await?;
+                let storage = vpsagent_storage::Storage::open(&config.paths.db).await
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                let subagents = vpsagent_runtime::SubagentManager::new(
+                    storage.clone(),
+                    std::sync::Arc::new(config.clone()),
+                );
+                let cwd = std::env::current_dir()?;
+                vpsagent_runtime::serve_mcp(&cwd, uuid::Uuid::nil(), subagents, storage)
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                Ok(())
+            }
+            Some(Command::Init) => {
+                let cfg = vpsagent_tui::run_init().await?;
+                eprintln!("Инициализация завершена. Конфиг: {}", cfg.paths.data_dir.display());
+                Ok(())
+            }
+        }
+    })
+}
+
+/// Инициализация tracing-подписчика (вызывается в каждом runtime).
+fn init_tracing() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -54,52 +165,156 @@ async fn main() -> Result<()> {
         .with_target(false)
         .compact()
         .init();
+}
 
-    let cli = Cli::parse();
-    let mut config = Config::load()?;
+/// Синхронный путь запуска демона: daemonize (fork) ВНЕ tokio runtime, затем child строит runtime.
+///
+/// fork ДО runtime — критично: иначе child унаследует epoll fd родительского
+/// runtime и упадёт "failed to wake I/O driver: Bad file descriptor".
+///
+/// Определяет режим, при daemonize — fork (до runtime), затем в child/foreground
+/// строит tokio runtime и зовёт `vpsagent_daemon::run`.
+fn run_daemon_sync(
+    config: Config,
+    foreground: bool,
+    daemonize: bool,
+    log_file: Option<PathBuf>,
+) -> Result<()> {
+    let log_path = log_file.unwrap_or_else(|| config.paths.log_file.clone());
 
-    // Автозапуск инициализации при первом запуске (нет секретов) — только интерактивный терминал.
-    if config.needs_init() && std::io::IsTerminal::is_terminal(&std::io::stdin()) {
-        config = vpsagent_tui::run_init().await?;
-    }
+    // Режим (FR-002): --foreground > --daemonize > auto (терминал → fg, pipe → dz).
+    let do_daemonize = if foreground {
+        false
+    } else if daemonize {
+        true
+    } else {
+        !std::io::stdin().is_terminal()
+    };
 
-    match cli.command {
-        None => {
-            // Без подкоманды — TUI (если терминал). Иначе упрощённый текстовый attach.
-            ensure_daemon(&config).await?;
-            let cwd = std::env::current_dir()?.to_string_lossy().to_string();
-            if std::io::IsTerminal::is_terminal(&std::io::stdin()) {
-                vpsagent_tui::run(&config, &cwd).await
-            } else {
-                run_attach(&config, None).await
+    if do_daemonize {
+        // FR-001: fork ДО tokio runtime. tracing в child настроится после.
+        match vpsagent_daemon::daemonize::daemonize(&log_path)? {
+            Daemonize::Child => {
+                // Мы — демон (child после fork). stdio уже в лог-файле.
+                // Строим собственный runtime; родительский runtime не существует
+                // (мы в синхронной main), так что epoll fd чист.
+            }
+            Daemonize::Parent { child_pid } => {
+                // Мы — родитель. Печатаем подтверждение (FR-004), ждём сокет, выходим.
+                eprintln!(
+                    "демон запущен: pid={child_pid} сокет={} лог={}",
+                    config.paths.socket.display(),
+                    log_path.display()
+                );
+                // Poll готовности сокета синхронно (без runtime) до 5 сек.
+                for _ in 0..50 {
+                    if config.paths.socket.exists() {
+                        // Попытка подключения — через отдельный короткоживущий runtime.
+                        let probe = tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                            .ok();
+                        if let Some(rt) = probe {
+                            let ok = rt.block_on(async {
+                                tokio::net::UnixStream::connect(&config.paths.socket)
+                                    .await
+                                    .is_ok()
+                            });
+                            if ok {
+                                return Ok(());
+                            }
+                        } else if config.paths.socket.exists() {
+                            // Сокет появился — считаем демона стартовавшим.
+                            return Ok(());
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+                anyhow::bail!(
+                    "демон стартовал, но сокет не появился за 5 сек — проверьте лог: {}",
+                    log_path.display()
+                );
+            }
+            Daemonize::Unsupported => {
+                // FR-008: не-Unix — foreground с предупреждением.
+                eprintln!(
+                    "[warn] daemonize не поддерживается — foreground; логи в stderr (log_file={})",
+                    log_path.display()
+                );
             }
         }
-        Some(Command::Daemon) => vpsagent_daemon::run(config).await.map_err(|e| anyhow::anyhow!(e.to_string())),
-        Some(Command::Run { task, model, output_format }) => {
-            run_headless(&config, &task, model, &output_format).await
+    }
+
+    // foreground или мы — child после daemonize: строим runtime и запускаем демон.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    rt.block_on(async move {
+        init_tracing();
+        vpsagent_daemon::run(config)
+            .await
+            .map_err(|e| anyhow::anyhow!(e.to_string()))
+    })
+}
+
+/// `vpsagent daemon stop` (FR-006): подключиться к сокету, послать DaemonStop.
+async fn daemon_stop(config: &Config) -> Result<()> {
+    let client = match RpcClient::connect(&config.paths.socket).await {
+        Ok(c) => c,
+        Err(_) => {
+            eprintln!("демон не запущен (сокет {} недоступен)", config.paths.socket.display());
+            std::process::exit(1);
         }
-        Some(Command::Attach { session_id }) => {
-            run_attach(&config, session_id.as_deref()).await
-        }
-        Some(Command::McpServe) => {
-            // MCP-сервер: требует запущенный демон (для storage/session).
-            ensure_daemon(&config).await?;
-            let storage = vpsagent_storage::Storage::open(&config.paths.db).await
-                .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-            let subagents = vpsagent_runtime::SubagentManager::new(
-                storage.clone(),
-                std::sync::Arc::new(config.clone()),
-            );
-            let cwd = std::env::current_dir()?;
-            vpsagent_runtime::serve_mcp(&cwd, uuid::Uuid::nil(), subagents, storage)
-                .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    };
+    match client.request(&Request::DaemonStop, &mut |_| {}).await {
+        Ok(Response::Ok) => {
+            eprintln!("демон остановлен");
             Ok(())
         }
-        Some(Command::Init) => {
-            let cfg = vpsagent_tui::run_init().await?;
-            eprintln!("Инициализация завершена. Конфиг: {}", cfg.paths.data_dir.display());
-            Ok(())
+        Ok(other) => anyhow::bail!("неожиданный ответ на DaemonStop: {other:?}"),
+        Err(e) => anyhow::bail!("ошибка RPC: {e}"),
+    }
+}
+
+/// `vpsagent daemon status` (FR-007): статус демона, text/json (FR-012).
+async fn daemon_status(config: &Config, output_format: &str) -> Result<()> {
+    let client = match RpcClient::connect(&config.paths.socket).await {
+        Ok(c) => c,
+        Err(_) => {
+            eprintln!("демон не запущен (сокет {} недоступен)", config.paths.socket.display());
+            std::process::exit(1);
         }
+    };
+    let resp = client.request(&Request::DaemonStatus, &mut |_| {}).await?;
+    let status = match resp {
+        Response::DaemonStatus(s) => s,
+        other => anyhow::bail!("неожиданный ответ на DaemonStatus: {other:?}"),
+    };
+    if output_format == "json" {
+        println!("{}", serde_json::to_string(&status)?);
+    } else {
+        println!("vpsagent {}", status.version);
+        println!("pid:      {}", status.pid);
+        println!("uptime:   {}", format_uptime(status.uptime_secs));
+        println!("сессий:   {}   агентов: {}", status.sessions, status.agents);
+    }
+    Ok(())
+}
+
+/// Человеко-читаемый uptime (1d 2h 3m / 2h 14m / 45m / 30s).
+fn format_uptime(secs: u64) -> String {
+    let d = secs / 86400;
+    let h = (secs % 86400) / 3600;
+    let m = (secs % 3600) / 60;
+    let s = secs % 60;
+    if d > 0 {
+        format!("{d}d {h}h {m}m")
+    } else if h > 0 {
+        format!("{h}h {m}m")
+    } else if m > 0 {
+        format!("{m}m {s}s")
+    } else {
+        format!("{s}s")
     }
 }
 

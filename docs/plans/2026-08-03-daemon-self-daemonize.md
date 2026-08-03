@@ -268,20 +268,23 @@ Command::Daemon  →  enum DaemonCmd
       Unit-тест `Daemonize`-enum в `daemonize.rs`.
 
 ### Фаза 3: CLI — группа `vpsagent daemon` (оценка: 2 ч)
-- [ ] 3.1 → `crates/vpsagent/src/main.rs` — `Command::Daemon` → clap-группа с
-      подкомандами `stop`/`status` и режимом запуска (без подкоманды) с флагами
-      `--foreground`/`--daemonize`/`--log-file <path>`.
-- [ ] 3.2 → `crates/vpsagent/src/main.rs` — `daemon_status(config, format)`:
-      `RpcClient::connect` → `Request::DaemonStatus` → вывод (text/json).
-      При ошибке подключения — «демон не запущен», exit code 1.
-- [ ] 3.3 → `crates/vpsagent/src/main.rs` — `daemon_stop(config)`: `RpcClient`
-      → `Request::DaemonStop` → ждать подтверждения, «демон остановлен».
-      При ошибке — «демон не запущен», exit code 1.
-- [ ] 3.4 → `crates/vpsagent/src/main.rs` — путь запуска: `is_terminal(stdin)` /
-      флаги → foreground или `daemonize()` перед `run()`. Вариант A (inline).
-      FR-008: на не-Unix — foreground + warning в лог.
-- [ ] 3.5 → `cargo build -p vpsagent` — компилируется; `vpsagent daemon --help`
-      показывает подкоманды.
+- [x] 3.1 → `crates/vpsagent/src/main.rs` — `Command::Daemon` → clap-группа с
+      подкомандами `stop`/`status` (`DaemonCmd`) и режимом запуска (без подкоманды)
+      с флагами `--foreground`/`--daemonize`/`--log-file <path>`.
+- [x] 3.2 → `crates/vpsagent/src/main.rs` — `daemon_status(config, format)`:
+      `RpcClient::connect` → `Request::DaemonStatus` → вывод text/json (FR-012),
+      `format_uptime`. При ошибке подключения — «демон не запущен», exit 1.
+- [x] 3.3 → `crates/vpsagent/src/main.rs` — `daemon_stop(config)`: `RpcClient`
+      → `Request::DaemonStop` → «демон остановлен». При ошибке — exit 1.
+- [x] 3.4 → `crates/vpsagent/src/main.rs` — путь запуска `run_daemon_sync`:
+      `is_terminal(stdin)` / флаги → foreground или daemonize. **Отклонение от
+      Варианта A:** fork ДО tokio runtime (ручной runtime вместо `#[tokio::main]`),
+      иначе child падает "failed to wake I/O driver: Bad file descriptor".
+      FR-008: на не-Unix — foreground + warning.
+- [x] 3.5 → `cargo build` — компилируется; `vpsagent daemon --help` показывает
+      подкоманды. E2E smoke: daemonize (pipe → auto), status text/json, SIGHUP
+      игнорируется (демон жив), stop через RPC, foreground + SIGTERM, exit codes
+      при незапущенном демоне.
 
 ### Фаза 4: Рефакторинг ensure_daemon + smoke (оценка: 1 ч)
 - [ ] 4.1 → `crates/vpsagent/src/main.rs` — `ensure_daemon()` переиспользует

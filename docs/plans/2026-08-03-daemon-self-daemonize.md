@@ -287,12 +287,13 @@ Command::Daemon  →  enum DaemonCmd
       при незапущенном демоне.
 
 ### Фаза 4: Рефакторинг ensure_daemon + smoke (оценка: 1 ч)
-- [ ] 4.1 → `crates/vpsagent/src/main.rs` — `ensure_daemon()` переиспользует
-      общий код daemonize (FR-010): вынести общий хелпер (например,
-      `spawn_detached_daemon(exe, config, log_file)`) и использовать из
-      `ensure_daemon` и (если Вариант B) из прямого запуска.
-- [ ] 4.2 → smoke-тест: `vpsagent run "задача"` (авто-подъём демона) работает
-      без регрессий.
+- [x] 4.1 → `crates/vpsagent/src/main.rs` — `ensure_daemon()` переиспользует
+      общий путь daemonize (FR-010): вынесен `spawn_detached_daemon(config)`,
+      который re-exec'ает `vpsagent daemon` (stdin→null → auto-daemonize в
+      `run_daemon_sync` → общий `daemonize.rs`). `libc_setsid` убран.
+- [x] 4.2 → smoke-тест: `vpsagent run "задача"` — демон авто-поднят (сокет
+      создан, pid зафиксирован), `status` отвечает (1 сессия), `stop` работает.
+      Функциональность `run` не регрессировала.
 
 ### Фаза 5: Тестирование и полировка (оценка: 1.5 ч)
 - [ ] 5.1 → Unit/интеграционные тесты:

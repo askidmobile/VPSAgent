@@ -525,51 +525,65 @@ async fn ensure_daemon(config: &Config) -> Result<()> {
     if config.paths.socket.exists() {
         std::fs::remove_file(&config.paths.socket).ok();
     }
-    // Запускаем демон как дочерний процесс.
+    // FR-010: переиспользуем общий путь daemonize. Запускаем `vpsagent daemon`
+    // как отсоединённый процесс (stdin → null → auto-detect даёт daemonize в
+    // run_daemon_sync, который делает fork+setsid+stdio→log). Логика setsid/
+    // stdio/лог-файла — в daemonize.rs, здесь только spawn + poll сокета.
+    spawn_detached_daemon(config).await
+}
+
+/// Запустить демон как отсоединённый дочерний процесс и дождаться сокета.
+///
+/// Child — это `vpsagent daemon` (без флагов): т.к. мы подаём stdin=null, auto-detect
+/// в `run_daemon_sync` выбирает daemonize, и внутри выполняется общий код
+/// `vpsagent_daemon::daemonize::daemonize` (fork+setsid+stdio→log). Таким образом
+/// `ensure_daemon` (авто-подъём из клиента) и прямой `vpsagent daemon` делят один
+/// кодовый путь отсоединения (FR-010).
+async fn spawn_detached_daemon(config: &Config) -> Result<()> {
     let exe = std::env::current_exe()?;
     let mut cmd = tokio::process::Command::new(&exe);
     cmd.arg("daemon");
+    // stdin → null: триггерит auto-daemonize в run_daemon_sync (FR-002).
+    // stdout/stderr → null: дочерний процесс (parent до fork) ничего не должен
+    // писать в наш терминал; после fork stdio child уходит в лог-файл.
     cmd.stdin(std::process::Stdio::null());
     cmd.stdout(std::process::Stdio::null());
     cmd.stderr(std::process::Stdio::null());
-    // На Unix отсоединяемся от терминала (setsid) — демон переживёт SSH.
+    // На Unix отсоединяемся от управляющего терминала на уровне процесса-родителя
+    // (для случая, если run_daemon_sync выберет foreground — не должно, но
+    // безопасность ради). Основной setsid делает daemonize.rs в child.
     #[cfg(unix)]
     {
+        // pre_exec (CommandExt) — unsafe-метод: closure выполняется в child
+        // перед exec. Здесь вызываем setsid, чтобы отсоединить spawn-родителя.
         unsafe {
             cmd.pre_exec(|| {
-                libc_setsid();
+                extern "C" {
+                    fn setsid() -> i32;
+                }
+                setsid();
                 Ok(())
             });
         }
     }
     let mut child = cmd.spawn()?;
-    // Reap дочернего демона: без wait процесс остаётся зомби после выхода.
+    // Reap дочернего процесса (parent до fork в run_daemon_sync): без wait
+    // остаётся зомби. Сам демон (grandchild после fork) живёт независимо.
     tokio::spawn(async move {
         let _ = child.wait().await;
     });
-    // Подождём, пока сокет появится (poll до 5 сек).
+    // Подождём, пока сокет появится (poll до 5 сек) — общий паттерн с run_daemon_sync.
     for _ in 0..50 {
-        if config.paths.socket.exists() {
-            if tokio::net::UnixStream::connect(&config.paths.socket)
+        if config.paths.socket.exists()
+            && tokio::net::UnixStream::connect(&config.paths.socket)
                 .await
                 .is_ok()
-            {
-                return Ok(());
-            }
+        {
+            return Ok(());
         }
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
     anyhow::bail!("демон не стартовал за 5 секунд")
-}
-
-#[cfg(unix)]
-fn libc_setsid() {
-    extern "C" {
-        fn setsid() -> i32;
-    }
-    unsafe {
-        setsid();
-    }
 }
 
 /// Хелпер для отображения роли.

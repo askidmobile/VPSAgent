@@ -58,15 +58,17 @@ impl Category {
 pub fn provider_category(id: &str) -> Category {
     match id {
         // First-party: вендоры моделей прямого API.
-        "openai" | "anthropic" | "google" | "xai" | "mistral" | "cohere"
-        | "perplexity" | "zhipuai" | "deepseek" | "qwen" => Category::FirstParty,
+        "openai" | "anthropic" | "google" | "xai" | "mistral" | "cohere" | "perplexity"
+        | "zhipuai" | "deepseek" | "qwen" => Category::FirstParty,
         // Cloud / inference: хостинг и ускоренный вывод моделей.
-        "azure" | "amazon-bedrock" | "google-vertex" | "together" | "fireworks"
-        | "deepinfra" | "groq" | "cerebras" | "nvidia" | "nebius" | "baseten"
-        | "siliconflow" | "scaleway" => Category::Cloud,
+        "azure" | "amazon-bedrock" | "google-vertex" | "together" | "fireworks" | "deepinfra"
+        | "groq" | "cerebras" | "nvidia" | "nebius" | "baseten" | "siliconflow" | "scaleway" => {
+            Category::Cloud
+        }
         // Агрегаторы: роутеры поверх многих вендоров.
-        "openrouter" | "anyapi" | "poe" | "aihubmix" | "merge-gateway"
-        | "ai-gateway" => Category::Aggregator,
+        "openrouter" | "anyapi" | "poe" | "aihubmix" | "merge-gateway" | "ai-gateway" => {
+            Category::Aggregator
+        }
         // Local / self-hosted.
         "ollama" => Category::Local,
         _ => Category::Other,

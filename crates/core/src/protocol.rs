@@ -377,11 +377,17 @@ mod tests {
             json.contains("\"kind\":\"thinking_delta\""),
             "ожидал kind=thinking_delta в: {json}"
         );
-        assert!(json.contains("размышляю"), "text должен попасть в json: {json}");
+        assert!(
+            json.contains("размышляю"),
+            "text должен попасть в json: {json}"
+        );
 
         let back: EventKind = serde_json::from_str(&json).unwrap();
         match back {
-            EventKind::ThinkingDelta { agent_id: aid, text } => {
+            EventKind::ThinkingDelta {
+                agent_id: aid,
+                text,
+            } => {
                 assert_eq!(aid, agent_id);
                 assert_eq!(text, "размышляю");
             }

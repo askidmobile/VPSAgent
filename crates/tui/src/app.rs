@@ -136,7 +136,11 @@ impl App {
         let is_block_start = |b: &str| b.is_empty() || b.ends_with('\n');
         let buf = self.texts.entry(agent_id).or_default();
         let needs_marker = is_block_start(buf);
-        let chunk = if needs_marker { format!("💭 {text}") } else { text.to_string() };
+        let chunk = if needs_marker {
+            format!("💭 {text}")
+        } else {
+            text.to_string()
+        };
         buf.push_str(&chunk);
         if buf.len() > MAX_AGENT_TEXT {
             let mut start = buf.len() - MAX_AGENT_TEXT;
@@ -147,7 +151,11 @@ impl App {
         }
         if self.selected_agent.is_none() {
             let needs_marker = is_block_start(&self.agent_text);
-            let chunk = if needs_marker { format!("💭 {text}") } else { text.to_string() };
+            let chunk = if needs_marker {
+                format!("💭 {text}")
+            } else {
+                text.to_string()
+            };
             self.agent_text.push_str(&chunk);
             if self.agent_text.len() > MAX_AGENT_TEXT {
                 let mut start = self.agent_text.len() - MAX_AGENT_TEXT;
@@ -250,8 +258,15 @@ mod tests {
         a.apply_thinking_delta(id, "user says ");
         a.apply_thinking_delta(id, "hi");
         let text = a.current_text();
-        assert_eq!(text.matches("💭").count(), 1, "маркер 💭 должен быть один: {text:?}");
-        assert!(text.starts_with("💭 The user says hi"), "блок должен слиться: {text:?}");
+        assert_eq!(
+            text.matches("💭").count(),
+            1,
+            "маркер 💭 должен быть один: {text:?}"
+        );
+        assert!(
+            text.starts_with("💭 The user says hi"),
+            "блок должен слиться: {text:?}"
+        );
     }
 
     /// После завершения блока мышления (когда буфер заканчивается на \n,
@@ -263,7 +278,11 @@ mod tests {
         a.agent_text.push_str("ответ\n");
         a.apply_thinking_delta(id, "новое размышление");
         let count = a.agent_text.matches("💭").count();
-        assert_eq!(count, 1, "после \\n — новый блок, один маркер: {:?}", a.agent_text);
+        assert_eq!(
+            count, 1,
+            "после \\n — новый блок, один маркер: {:?}",
+            a.agent_text
+        );
         assert!(a.agent_text.ends_with("\n💭 новое размышление"));
     }
 
@@ -276,7 +295,11 @@ mod tests {
         a.apply_thinking_delta(id, "думаю");
         a.apply_text_delta(id, "ответ");
         let text = a.current_text();
-        assert_eq!(text.matches("💭").count(), 1, "маркер только у мышления: {text:?}");
+        assert_eq!(
+            text.matches("💭").count(),
+            1,
+            "маркер только у мышления: {text:?}"
+        );
         assert!(text.contains("думаю") && text.contains("ответ"));
     }
 }

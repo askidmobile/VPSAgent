@@ -16,7 +16,10 @@ pub enum MockStep {
     Text(String),
     /// Reasoning/thinking-дельта (эмитится как StreamChunk::ThinkingDelta).
     Thinking(String),
-    ToolCall { name: String, input: Value },
+    ToolCall {
+        name: String,
+        input: Value,
+    },
     Done,
 }
 

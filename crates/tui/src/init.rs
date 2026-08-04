@@ -22,7 +22,9 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wra
 use ratatui::Terminal;
 use vpsagent_core::{Config, EndpointKind, ModelEndpoint};
 
-use crate::registry::{endpoint_kind, load_registry, provider_category, Category, RegistryProvider};
+use crate::registry::{
+    endpoint_kind, load_registry, provider_category, Category, RegistryProvider,
+};
 
 /// Режим шага 1: выбор провайдера.
 #[derive(Clone, PartialEq)]
@@ -145,7 +147,10 @@ impl InitState {
             }
             p.name.to_lowercase().contains(&q)
                 || p.id.to_lowercase().contains(&q)
-                || p.api.as_deref().map(|u| u.to_lowercase().contains(&q)).unwrap_or(false)
+                || p.api
+                    .as_deref()
+                    .map(|u| u.to_lowercase().contains(&q))
+                    .unwrap_or(false)
         };
 
         for cat in CATEGORY_ORDER {
@@ -232,11 +237,9 @@ impl InitState {
                     }
                     Some(Row::Search) => {
                         // Enter в поиске — фокус к первому провайдеру в результатах.
-                        if let Some(pos) = self
-                            .rows
-                            .iter()
-                            .position(|r| matches!(r, Row::Provider { .. } | Row::OAuth | Row::Custom))
-                        {
+                        if let Some(pos) = self.rows.iter().position(|r| {
+                            matches!(r, Row::Provider { .. } | Row::OAuth | Row::Custom)
+                        }) {
                             self.focus = pos;
                         }
                         return;
@@ -670,7 +673,17 @@ fn render(f: &mut ratatui::Frame, state: &InitState) {
                         let p = &state.registry[*idx];
                         let url = p.api.as_deref().unwrap_or("(дефолт)");
                         let prefix = if focused { "▶   " } else { "    " };
-                        ListItem::new(format!("{prefix}{} — {}", p.name, url)).style(
+                        ListItem::new(format!("{prefix}{} — {}", p.name, url)).style(if focused {
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default()
+                        })
+                    }
+                    Row::OAuth => {
+                        let prefix = if focused { "▶ " } else { "  " };
+                        ListItem::new(format!("{prefix}OAuth ChatGPT (логин через браузер)")).style(
                             if focused {
                                 Style::default()
                                     .fg(Color::Cyan)
@@ -680,9 +693,9 @@ fn render(f: &mut ratatui::Frame, state: &InitState) {
                             },
                         )
                     }
-                    Row::OAuth => {
+                    Row::Custom => {
                         let prefix = if focused { "▶ " } else { "  " };
-                        ListItem::new(format!("{prefix}OAuth ChatGPT (логин через браузер)"))
+                        ListItem::new(format!("{prefix}Custom (название, url, api key, протокол)"))
                             .style(if focused {
                                 Style::default()
                                     .fg(Color::Cyan)
@@ -690,19 +703,6 @@ fn render(f: &mut ratatui::Frame, state: &InitState) {
                             } else {
                                 Style::default()
                             })
-                    }
-                    Row::Custom => {
-                        let prefix = if focused { "▶ " } else { "  " };
-                        ListItem::new(format!(
-                            "{prefix}Custom (название, url, api key, протокол)"
-                        ))
-                        .style(if focused {
-                            Style::default()
-                                .fg(Color::Cyan)
-                                .add_modifier(Modifier::BOLD)
-                        } else {
-                            Style::default()
-                        })
                     }
                 }
             })
@@ -883,10 +883,10 @@ mod tests {
             .collect();
         assert_eq!(providers, vec!["Kimi for Coding".to_string()]);
         // При активном поиске Other-категория автораскрывается.
-        assert!(s.rows.iter().any(|r| matches!(
-            r,
-            Row::CategoryHeader(Category::Other)
-        )));
+        assert!(s
+            .rows
+            .iter()
+            .any(|r| matches!(r, Row::CategoryHeader(Category::Other))));
     }
 
     /// Поиск по id/url тоже работает (ускорение по техническим именам).
@@ -903,11 +903,18 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert!(providers.contains(&"openai".to_string()), "по id: {providers:?}");
+        assert!(
+            providers.contains(&"openai".to_string()),
+            "по id: {providers:?}"
+        );
         // Очистка — полный список.
         s.search.clear();
         s.rebuild_rows();
-        let p = s.rows.iter().filter(|r| matches!(r, Row::Provider { .. })).count();
+        let p = s
+            .rows
+            .iter()
+            .filter(|r| matches!(r, Row::Provider { .. }))
+            .count();
         assert_eq!(p, 0, "поиск пуст, все свёрнуты → 0 провайдеров");
     }
 
@@ -926,7 +933,10 @@ mod tests {
         s.focus = pos;
         s.next_step();
         assert_eq!(s.step, 1, "должен перейти на шаг 1");
-        assert!(matches!(s.pick, Some(Pick::Registry(0))), "Pick::Registry(0)");
+        assert!(
+            matches!(s.pick, Some(Pick::Registry(0))),
+            "Pick::Registry(0)"
+        );
         assert_eq!(s.models, vec!["gpt-5".to_string()]);
     }
 

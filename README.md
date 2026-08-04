@@ -78,14 +78,35 @@ curl -fsSL https://github.com/askidmobile/VPSAgent/releases/latest/download/inst
 
 ## Сборка
 
+### Локальная (разработка, macOS/Linux)
+
 ```bash
 cargo build --release
-# статический musl-бинарь для Linux/x86_64:
-cargo build --release --target x86_64-unknown-linux-musl
 ```
 
-Бинарь — `target/x86_64-unknown-linux-musl/release/vpsagent`, статический,
-без внешних зависимостей.
+Бинарь — `target/release/vpsagent` (динамическая линковка под текущую ОС;
+для распространения не подходит — тянется glibc целевого дистрибутива).
+
+### Релиз: статический musl-бинарь для Linux x86_64
+
+Поставка — один статический musl-бинарь. Сборка идёт на `yttri-win` (Windows + WSL)
+с Linux-тулчейном `musl-tools` (нужен `rusqlite/bundled` для компиляции SQLite под
+target). Полная инструкция — [`docs/build-musl-yttri-win.md`](docs/build-musl-yttri-win.md).
+
+Кратко (в WSL на yttri-win):
+
+```bash
+# Окружение (один раз):
+rustup target add x86_64-unknown-linux-musl
+sudo apt-get install -y musl-tools
+
+# Сборка бинаря + tar.gz + sha256 (имена по конвенции install.sh / vpsagent upgrade):
+scripts/build-musl.sh
+# → build/vpsagent-v{ВЕРСИЯ}-x86_64-unknown-linux-musl.tar.gz + .sha256
+```
+
+Артефакты публикуются в [GitHub Releases](https://github.com/askidmobile/VPSAgent/releases);
+`install.sh` и `vpsagent upgrade` скачивают их по имени (см. «Установка» и «Обновление»).
 
 ## Использование
 
@@ -157,6 +178,7 @@ vpsagent daemon restart
 ## Документация
 
 - [`BRIEF.md`](BRIEF.md) — бриф проекта (требования, решения).
+- [`docs/build-musl-yttri-win.md`](docs/build-musl-yttri-win.md) — сборка musl-бинаря на yttri-win (WSL).
 - [`docs/specs/`](docs/specs/) — технические спецификации.
 - [`docs/plans/`](docs/plans/) — планы реализации.
 

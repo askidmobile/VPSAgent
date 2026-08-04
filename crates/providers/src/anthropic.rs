@@ -46,7 +46,6 @@ impl Anthropic {
     }
 
     /// Сборка тела запроса Messages API.
-    /// Сборка тела запроса Messages API.
     /// История — Vec<Message> с ролями; маппим блоки по роли (C6).
     /// ToolResult-блоки одного tool-шага объединяем в один user (требование Anthropic).
     fn body(&self, req: &ChatRequest) -> Value {

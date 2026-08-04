@@ -274,6 +274,7 @@ impl InitState {
                         }
                         2 => {
                             self.custom_key = self.input.trim().to_string();
+                            self.input.clear();
                             self.field_idx = 3;
                             self.status = "протокол: 1=openai-compat, 2=responses, 3=anthropic (введите цифру)".into();
                         }
@@ -581,11 +582,17 @@ fn render(f: &mut ratatui::Frame, state: &InitState) {
                     "API-ключ",
                     "протокол (1/2/3)",
                 ];
+                // Маскируем API-ключ (field_idx >= 2), как для Registry/OAuth.
+                let display = if state.field_idx >= 2 {
+                    mask(&state.input)
+                } else {
+                    state.input.clone()
+                };
                 format!(
                     "Custom (шаг {}/4): {}\n\n> {}",
                     state.field_idx + 1,
                     labels[state.field_idx.min(3)],
-                    state.input
+                    display
                 )
             } else if matches!(state.pick, Some(Pick::OauthChatGpt)) {
                 format!(
@@ -907,6 +914,21 @@ mod tests {
             providers.contains(&"openai".to_string()),
             "по id: {providers:?}"
         );
+        // Поиск по фрагменту URL.
+        s.search = "api.openai".into();
+        s.rebuild_rows();
+        let by_url: Vec<_> = s
+            .rows
+            .iter()
+            .filter_map(|r| match r {
+                Row::Provider { idx } => Some(s.registry[*idx].id.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            by_url.contains(&"openai".to_string()),
+            "по URL api.openai: {by_url:?}"
+        );
         // Очистка — полный список.
         s.search.clear();
         s.rebuild_rows();
@@ -916,6 +938,40 @@ mod tests {
             .filter(|r| matches!(r, Row::Provider { .. }))
             .count();
         assert_eq!(p, 0, "поиск пуст, все свёрнуты → 0 провайдеров");
+    }
+
+    /// При поиске OAuth/Custom скрываются, если не совпадают с запросом.
+    #[test]
+    fn search_hides_oauth_and_custom_when_not_matching() {
+        let mut s = state_with_registry();
+        s.search = "groq".into();
+        s.rebuild_rows();
+        assert!(
+            !s.rows.iter().any(|r| matches!(r, Row::OAuth)),
+            "OAuth должен скрыться при поиске 'groq'"
+        );
+        assert!(
+            !s.rows.iter().any(|r| matches!(r, Row::Custom)),
+            "Custom должен скрыться при поиске 'groq'"
+        );
+    }
+
+    /// Поиск 'custom' показывает Custom, поиск 'chatgpt' показывает OAuth.
+    #[test]
+    fn search_shows_oauth_and_custom_when_matching() {
+        let mut s = state_with_registry();
+        s.search = "custom".into();
+        s.rebuild_rows();
+        assert!(
+            s.rows.iter().any(|r| matches!(r, Row::Custom)),
+            "Custom должен быть виден при поиске 'custom'"
+        );
+        s.search = "chatgpt".into();
+        s.rebuild_rows();
+        assert!(
+            s.rows.iter().any(|r| matches!(r, Row::OAuth)),
+            "OAuth должен быть виден при поиске 'chatgpt'"
+        );
     }
 
     /// Выбор провайдера через Row::Provider ставит Pick::Registry(idx).

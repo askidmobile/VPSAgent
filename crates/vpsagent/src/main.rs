@@ -749,9 +749,20 @@ async fn run_headless(
     let mut finished = false;
     let mut failed = false;
     let mut last_text = String::new();
+    // thinking_active: true, пока идёт блок мышления; сбрасывается первой
+    // TextDelta после thinking, чтобы отделить мышление от ответа.
+    let mut thinking_active = false;
     client
         .drain_events(|ev| match ev.kind {
             EventKind::TextDelta { text, .. } => {
+                if thinking_active {
+                    thinking_active = false;
+                    if output_format == "text" {
+                        println!();
+                        use std::io::Write;
+                        let _ = std::io::stdout().flush();
+                    }
+                }
                 if output_format == "text" {
                     print!("{text}");
                     use std::io::Write;
@@ -770,7 +781,12 @@ async fn run_headless(
             }
             EventKind::ThinkingDelta { text, .. } => {
                 if output_format == "text" {
-                    print!("💭 {text}");
+                    // Маркер «💭 » только в начале блока, не на каждой дельте.
+                    if !thinking_active {
+                        thinking_active = true;
+                        print!("\n💭 ");
+                    }
+                    print!("{text}");
                     use std::io::Write;
                     let _ = std::io::stdout().flush();
                 } else if output_format == "stream-json" {
@@ -856,10 +872,28 @@ async fn run_attach(config: &Config, session_id: Option<&str>) -> Result<()> {
     }
     println!("\n[live-стрим событий. Ctrl+C — отключиться (агент продолжит работать)]\n");
 
+    let mut thinking_active = false;
     client
         .drain_events(|ev| match ev.kind {
-            EventKind::TextDelta { text, .. } => print!("{text}"),
-            EventKind::ThinkingDelta { text, .. } => print!("💭 {text}"),
+            EventKind::TextDelta { text, .. } => {
+                if thinking_active {
+                    thinking_active = false;
+                    println!();
+                }
+                print!("{text}");
+                use std::io::Write;
+                let _ = std::io::stdout().flush();
+            }
+            EventKind::ThinkingDelta { text, .. } => {
+                // Маркер «💭 » только в начале блока мышления.
+                if !thinking_active {
+                    thinking_active = true;
+                    print!("\n💭 ");
+                }
+                print!("{text}");
+                use std::io::Write;
+                let _ = std::io::stdout().flush();
+            }
             EventKind::UserMessage { text, .. } => println!("\n--- агент ---\n{text}"),
             EventKind::ToolCallStart { name, .. } => println!("\n[tool: {name}]"),
             EventKind::ToolCallEnd {

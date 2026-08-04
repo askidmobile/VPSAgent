@@ -125,14 +125,19 @@ impl App {
     }
 
     /// Добавить дельту reasoning/thinking-контента агента. Маркер «💭 »
-    /// отделяет мышление от ответа в общем потоке фокус-панели. Отдельная
-    /// цветная панель — future (меняет layout). В историю не сохраняется
-    /// (display-only). agent_busy=true — статус-бар показывает «● работаю»
-    /// уже на этапе мышления, до первого content.
+    /// ставится ОДИН раз в начале блока мышления (когда буфер пуст или
+    /// заканчивается на перенос строки), а не перед каждой дельтой — иначе
+    /// вывод выглядел как «💭 The💭  user💭  just…». Отдельная цветная панель —
+    /// future (меняет layout). В историю не сохраняется (display-only).
+    /// agent_busy=true — статус-бар показывает «● работаю» уже на этапе
+    /// мышления, до первого content.
     pub fn apply_thinking_delta(&mut self, agent_id: Id, text: &str) {
-        let marked = format!("💭 {text}");
+        // Маркер только в начале блока: буфер пуст или заканчивается на \n.
+        let is_block_start = |b: &str| b.is_empty() || b.ends_with('\n');
         let buf = self.texts.entry(agent_id).or_default();
-        buf.push_str(&marked);
+        let needs_marker = is_block_start(buf);
+        let chunk = if needs_marker { format!("💭 {text}") } else { text.to_string() };
+        buf.push_str(&chunk);
         if buf.len() > MAX_AGENT_TEXT {
             let mut start = buf.len() - MAX_AGENT_TEXT;
             while !buf.is_char_boundary(start) {
@@ -141,7 +146,9 @@ impl App {
             buf.drain(..start);
         }
         if self.selected_agent.is_none() {
-            self.agent_text.push_str(&marked);
+            let needs_marker = is_block_start(&self.agent_text);
+            let chunk = if needs_marker { format!("💭 {text}") } else { text.to_string() };
+            self.agent_text.push_str(&chunk);
             if self.agent_text.len() > MAX_AGENT_TEXT {
                 let mut start = self.agent_text.len() - MAX_AGENT_TEXT;
                 while !self.agent_text.is_char_boundary(start) {
@@ -217,5 +224,59 @@ impl App {
         self.input_history.push(text.clone());
         self.input.clear();
         Some((session_id, text))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn app() -> App {
+        App::default()
+    }
+
+    /// Маркер «💭 » ставится ОДИН раз в начале блока мышления, а не перед
+    /// каждой дельтой — иначе вывод выглядел как «💭 The💭  user💭  just…».
+    fn agent_id() -> Id {
+        Id::nil()
+    }
+
+    #[test]
+    fn thinking_marker_only_at_block_start() {
+        let mut a = app();
+        let id = agent_id();
+        // Три дельты мышления подряд.
+        a.apply_thinking_delta(id, "The ");
+        a.apply_thinking_delta(id, "user says ");
+        a.apply_thinking_delta(id, "hi");
+        let text = a.current_text();
+        assert_eq!(text.matches("💭").count(), 1, "маркер 💭 должен быть один: {text:?}");
+        assert!(text.starts_with("💭 The user says hi"), "блок должен слиться: {text:?}");
+    }
+
+    /// После завершения блока мышления (когда буфер заканчивается на \n,
+    /// например после ответа) новый блок мышления снова получает маркер.
+    #[test]
+    fn thinking_marker_restarts_after_newline() {
+        let mut a = app();
+        let id = agent_id();
+        a.agent_text.push_str("ответ\n");
+        a.apply_thinking_delta(id, "новое размышление");
+        let count = a.agent_text.matches("💭").count();
+        assert_eq!(count, 1, "после \\n — новый блок, один маркер: {:?}", a.agent_text);
+        assert!(a.agent_text.ends_with("\n💭 новое размышление"));
+    }
+
+    /// TextDelta после ThinkingDelta не должен нести маркер мышления —
+    /// это уже финальный ответ модели.
+    #[test]
+    fn text_after_thinking_has_no_marker() {
+        let mut a = app();
+        let id = agent_id();
+        a.apply_thinking_delta(id, "думаю");
+        a.apply_text_delta(id, "ответ");
+        let text = a.current_text();
+        assert_eq!(text.matches("💭").count(), 1, "маркер только у мышления: {text:?}");
+        assert!(text.contains("думаю") && text.contains("ответ"));
     }
 }

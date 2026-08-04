@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use vpsagent_core::{AgentInfo, EventKind, Id, Session};
+use vpsagent_core::{AgentInfo, EventKind, Id, Session, TokenUsage};
 
 /// Максимальный размер текстового буфера одного агента (байт).
 /// При превышении обрезаем голову по границе char (keep tail).
@@ -43,6 +43,12 @@ pub struct App {
     pub selected_agent: Option<Id>,
     /// Ожидающее подтверждение разрешения (y/n).
     pub pending_permission: Option<PendingPermission>,
+    /// Текущая модель (из AgentSpawned).
+    pub current_model: String,
+    /// Текущий провайдер (имя endpoint из конфига — заполняется при спавне агента).
+    pub current_provider: String,
+    /// Использование токенов (из TokenTick).
+    pub token_usage: TokenUsage,
 }
 
 impl Default for App {
@@ -61,6 +67,9 @@ impl Default for App {
             attached: false,
             selected_agent: None,
             pending_permission: None,
+            current_model: String::new(),
+            current_provider: String::new(),
+            token_usage: TokenUsage::default(),
         }
     }
 }
@@ -193,7 +202,12 @@ impl App {
                 }
             }
             EventKind::AgentSpawned(info) => {
+                self.current_model = info.model.clone();
+                self.current_provider = info.provider.clone();
                 self.upsert_agent(info);
+            }
+            EventKind::TokenTick { tokens, .. } => {
+                self.token_usage = tokens;
             }
             EventKind::AgentFinished { agent_id } => {
                 self.agent_busy = false;

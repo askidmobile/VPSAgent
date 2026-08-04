@@ -29,6 +29,8 @@ pub struct AgentParams {
     pub session_id: Id,
     pub agent_id: Id,
     pub model: String,
+    /// Имя провайдера (endpoint name из конфига) — для статус-бара TUI.
+    pub provider_name: String,
     pub cwd: PathBuf,
     pub provider: Arc<dyn Provider>,
     pub storage: Storage,
@@ -119,6 +121,7 @@ pub async fn run_agent(mut params: AgentParams) -> Result<()> {
         last_action: "старт".into(),
         tokens: TokenUsage::default(),
         model: params.model.clone(),
+        provider: params.provider_name.clone(),
         parent_id: None,
     };
     let _ = params.storage.upsert_agent(&info).await;

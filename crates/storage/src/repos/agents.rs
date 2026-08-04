@@ -27,17 +27,19 @@ impl Storage {
         let model = agent.model.clone();
         let name = agent.name.clone();
         let last_action = agent.last_action.clone();
+        let provider = agent.provider.clone();
         let created = Utc::now().to_rfc3339();
         self.call(move |conn| {
             conn.execute(
                 "INSERT INTO agents (id, session_id, parent_id, name, kind, status, last_action,
-                                     tokens_input, tokens_output, model, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                                     tokens_input, tokens_output, model, provider, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
                  ON CONFLICT(id) DO UPDATE SET
                     status=excluded.status,
                     last_action=excluded.last_action,
                     tokens_input=excluded.tokens_input,
-                    tokens_output=excluded.tokens_output",
+                    tokens_output=excluded.tokens_output,
+                    provider=excluded.provider",
                 rusqlite::params![
                     id,
                     session_id,
@@ -49,6 +51,7 @@ impl Storage {
                     tokens_in,
                     tokens_out,
                     model,
+                    provider,
                     created
                 ],
             )?;
@@ -61,7 +64,7 @@ impl Storage {
         self.call(move |conn| {
             let mut stmt = conn.prepare(
                 "SELECT id, session_id, parent_id, name, kind, status, last_action,
-                        tokens_input, tokens_output, model
+                        tokens_input, tokens_output, model, provider
                  FROM agents WHERE session_id = ?1 ORDER BY created_at",
             )?;
             let rows = stmt.query_map(rusqlite::params![session_id.to_string()], |row| {
@@ -95,6 +98,7 @@ impl Storage {
                         output: tokens_out as u32,
                     },
                     model: row.get(9)?,
+                    provider: row.get(10).unwrap_or_default(),
                 })
             })?;
             rows.collect::<rusqlite::Result<Vec<_>>>()

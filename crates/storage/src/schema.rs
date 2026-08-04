@@ -25,6 +25,7 @@ pub const MIGRATIONS: &[&str] = &[
         tokens_input INTEGER NOT NULL DEFAULT 0,
         tokens_output INTEGER NOT NULL DEFAULT 0,
         model TEXT NOT NULL,
+        provider TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL,
         finished_at TEXT,
         FOREIGN KEY (session_id) REFERENCES sessions(id)

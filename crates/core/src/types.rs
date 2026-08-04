@@ -105,6 +105,9 @@ pub struct AgentInfo {
     pub last_action: String,
     pub tokens: TokenUsage,
     pub model: String,
+    /// Имя провайдера (endpoint name из конфига) — для статус-бара TUI.
+    #[serde(default)]
+    pub provider: String,
     pub parent_id: Option<Id>,
 }
 

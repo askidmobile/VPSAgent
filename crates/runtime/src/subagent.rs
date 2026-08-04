@@ -195,6 +195,7 @@ impl SubagentManager {
             last_action: "старт".into(),
             tokens: TokenUsage::default(),
             model: model.clone(),
+            provider: endpoint.name.clone(),
             parent_id: Some(parent_agent_id),
         };
         self.storage.upsert_agent(&info).await?;
@@ -204,6 +205,7 @@ impl SubagentManager {
             session_id,
             agent_id,
             model,
+            provider_name: endpoint.name.clone(),
             cwd,
             provider,
             storage: self.storage.clone(),

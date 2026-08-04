@@ -44,45 +44,54 @@ pub fn render(f: &mut Frame, app: &App) {
     let cursor_y = input_area.y + 1;
     f.set_cursor_position((cursor_x, cursor_y));
 
-    // Статус-бар.
+    // Статус-бар: [provider] model · tokens: input/output · статус.
     let status_style = Style::default().add_modifier(Modifier::REVERSED);
-    let mut line = Line::from(vec![
-        Span::styled(
-            if app.agent_busy {
-                " ● работаю "
-            } else {
-                " ○ готов "
-            },
-            Style::default().fg(if app.agent_busy {
-                Color::Green
-            } else {
-                Color::DarkGray
-            }),
-        ),
-        Span::raw("  "),
-        Span::styled(&app.status, status_style),
-    ]);
-    if let Some(s) = &app.session {
-        line = Line::from(vec![
-            Span::raw(format!(" session:{} ", s.id)),
-            Span::raw("  "),
-            Span::styled(
-                if app.agent_busy {
-                    " ● работаю "
-                } else {
-                    " ○ готов "
-                },
-                Style::default().fg(if app.agent_busy {
-                    Color::Green
-                } else {
-                    Color::DarkGray
-                }),
-            ),
-            Span::raw("  "),
-            Span::styled(&app.status, status_style),
-        ]);
+    let busy_span = Span::styled(
+        if app.agent_busy {
+            " ● работаю "
+        } else {
+            " ○ готов "
+        },
+        Style::default().fg(if app.agent_busy {
+            Color::Green
+        } else {
+            Color::DarkGray
+        }),
+    );
+    let mut spans: Vec<Span> = vec![];
+    if !app.current_provider.is_empty() {
+        spans.push(Span::styled(
+            format!("[{}] ", app.current_provider),
+            Style::default().fg(Color::Cyan),
+        ));
     }
+    if !app.current_model.is_empty() {
+        spans.push(Span::raw(format!("{} · ", app.current_model)));
+    }
+    let tu = &app.token_usage;
+    if tu.input > 0 || tu.output > 0 {
+        spans.push(Span::raw(format!(
+            "токены: {}/{} · ",
+            format_tokens(tu.input),
+            format_tokens(tu.output)
+        )));
+    }
+    spans.push(busy_span);
+    spans.push(Span::raw("  "));
+    spans.push(Span::styled(&app.status, status_style));
+    let line = Line::from(spans);
     f.render_widget(Paragraph::new(line), chunks[3]);
+}
+
+/// Формат числа токенов: 1.2K, 456, 1.5M.
+fn format_tokens(n: u32) -> String {
+    if n >= 1_000_000 {
+        format!("{:.1}M", n as f64 / 1_000_000.0)
+    } else if n >= 1_000 {
+        format!("{:.1}K", n as f64 / 1_000.0)
+    } else {
+        n.to_string()
+    }
 }
 
 /// Высота deck-панели: 1 строка на агента, максимум 5.

@@ -58,6 +58,24 @@
 | `crates/tui` | TUI на Ratatui (диалог, deck, init-мастер) |
 | `crates/tests` | Интеграционные тесты |
 
+## Установка (Linux x86_64)
+
+Одной командой (curl|sh) — скачивает статический musl-бинарь из [GitHub Releases](https://github.com/askidmobile/VPSAgent/releases), проверяет SHA256, устанавливает в `~/.local/bin`:
+
+```bash
+curl -fsSL https://github.com/askidmobile/VPSAgent/releases/latest/download/install.sh | sh
+```
+
+Системная установка (`/usr/local/bin`, нужен sudo):
+
+```bash
+curl -fsSL https://github.com/askidmobile/VPSAgent/releases/latest/download/install.sh | sudo sh
+```
+
+Если `~/.local/bin` не в PATH — installer подскажет добавить в `~/.bashrc`/`~/.zshrc`.
+
+> macOS и другие архитектуры: установщик не поддерживает (musl-бинарь только для Linux x86_64). Сборка из исходников — см. ниже.
+
 ## Сборка
 
 ```bash

@@ -202,6 +202,30 @@ impl Config {
         }
         Ok(())
     }
+
+    /// Установить модель по умолчанию (для `vpsagent provider use`).
+    pub fn set_default_model(&mut self, model: &str) -> anyhow::Result<()> {
+        if self.endpoint_for_model(model).is_none() {
+            anyhow::bail!("модель '{model}' не найдена ни в одном endpoint");
+        }
+        self.default_model = model.to_string();
+        self.save()
+    }
+
+    /// Удалить endpoint по имени (для `vpsagent provider remove`).
+    pub fn remove_endpoint(&mut self, name: &str) -> anyhow::Result<()> {
+        let len_before = self.endpoints.len();
+        self.endpoints.retain(|e| e.name != name);
+        if self.endpoints.len() == len_before {
+            anyhow::bail!("провайдер '{name}' не найден");
+        }
+        self.save()
+    }
+
+    /// Список настроенных провайдеров (для `vpsagent provider list`).
+    pub fn list_endpoints(&self) -> &[ModelEndpoint] {
+        &self.endpoints
+    }
 }
 
 impl Paths {

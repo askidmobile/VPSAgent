@@ -20,6 +20,9 @@ use vpsagent_daemon::{Daemonize, RpcClient};
 #[derive(Parser)]
 #[command(name = "vpsagent", version, about = "Агентская CLI-система на Rust")]
 struct Cli {
+    /// Модель (переопределяет default_model из конфига).
+    #[arg(long, global = true)]
+    model: Option<String>,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -71,6 +74,30 @@ enum Command {
         /// Обновить даже если версия совпадает.
         #[arg(long)]
         force: bool,
+    },
+    /// Управление провайдерами: список, переключение, добавление, удаление.
+    Provider {
+        #[command(subcommand)]
+        action: ProviderCmd,
+    },
+}
+
+/// Подкоманды `vpsagent provider <cmd>`.
+#[derive(Subcommand)]
+enum ProviderCmd {
+    /// Показать таблицу настроенных провайдеров.
+    List,
+    /// Установить провайдер/модель по умолчанию.
+    Use {
+        /// Имя модели (должна быть в списке models одного из endpoints).
+        model: String,
+    },
+    /// Запустить init-мастер для добавления нового провайдера.
+    Add,
+    /// Удалить провайдер из конфига.
+    Remove {
+        /// Имя провайдера (endpoint name).
+        name: String,
     },
 }
 
@@ -157,7 +184,7 @@ fn main() -> Result<()> {
                 ensure_daemon(&config).await?;
                 let cwd = std::env::current_dir()?.to_string_lossy().to_string();
                 if std::io::stdin().is_terminal() {
-                    vpsagent_tui::run(&config, &cwd).await
+                    vpsagent_tui::run(&config, &cwd, cli.model.as_deref()).await
                 } else {
                     run_attach(&config, None).await
                 }
@@ -203,6 +230,51 @@ fn main() -> Result<()> {
                 Ok(())
             }
             Some(Command::Upgrade { check, force }) => run_upgrade(check, force).await,
+            Some(Command::Provider { action }) => match action {
+                ProviderCmd::List => {
+                    let eps = config.list_endpoints();
+                    if eps.is_empty() {
+                        eprintln!("нет настроенных провайдеров. Используйте: vpsagent init");
+                    } else {
+                        println!("{:<24} {:<18} {:<40} {}", "name", "kind", "url", "models");
+                        println!("{}", "-".repeat(100));
+                        for e in eps {
+                            let kind = match e.kind {
+                                vpsagent_core::EndpointKind::OpenaiCompat => "openai_compat",
+                                vpsagent_core::EndpointKind::OpenaiResponses => "openai_responses",
+                                vpsagent_core::EndpointKind::Anthropic => "anthropic",
+                            };
+                            println!(
+                                "{:<24} {:<18} {:<40} {}",
+                                e.name,
+                                kind,
+                                e.base_url,
+                                e.models.join(", ")
+                            );
+                        }
+                    }
+                    eprintln!("\nмодель по умолчанию: {}", config.default_model);
+                    Ok(())
+                }
+                ProviderCmd::Use { model } => {
+                    config.set_default_model(&model)?;
+                    eprintln!("модель по умолчанию: {model}");
+                    Ok(())
+                }
+                ProviderCmd::Add => {
+                    let cfg = vpsagent_tui::run_init().await?;
+                    eprintln!(
+                        "провайдер добавлен. Конфиг: {}",
+                        cfg.paths.data_dir.display()
+                    );
+                    Ok(())
+                }
+                ProviderCmd::Remove { name } => {
+                    config.remove_endpoint(&name)?;
+                    eprintln!("провайдер '{name}' удалён");
+                    Ok(())
+                }
+            },
         }
     })
 }

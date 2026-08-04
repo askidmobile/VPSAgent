@@ -160,6 +160,38 @@ impl OpenaiCompat {
         }
         Ok(resp)
     }
+
+    /// Получить список моделей с API провайдера (GET /v1/models).
+    /// Используется init-мастером для Custom-провайдеров.
+    pub async fn list_models(&self) -> Result<Vec<String>> {
+        let url = format!("{}/models", self.base_url.trim_end_matches('/'));
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.headers())
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await
+            .map_err(|e| Error::Provider(format!("list_models: {e}")))?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(Error::Provider(format!(
+                "list_models HTTP {status}: {text}"
+            )));
+        }
+        let body: Value = resp
+            .json()
+            .await
+            .map_err(|e| Error::Provider(format!("list_models json: {e}")))?;
+        let models: Vec<String> = body["data"]
+            .as_array()
+            .unwrap_or(&vec![])
+            .iter()
+            .filter_map(|m| m["id"].as_str().map(|s| s.to_string()))
+            .collect();
+        Ok(models)
+    }
 }
 
 impl Provider for OpenaiCompat {

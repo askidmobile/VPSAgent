@@ -102,6 +102,8 @@ struct InitState {
     status: String,
     /// Завершено.
     done: bool,
+    /// Идёт загрузка моделей с API (Custom-провайдер, шаг field_idx=3→2).
+    models_loading: bool,
 }
 
 impl InitState {
@@ -125,6 +127,7 @@ impl InitState {
             default_model: String::new(),
             status: "↑/↓ — выбор, Enter — раскрыть/выбрать, печатать — поиск, Esc — выход".into(),
             done: false,
+            models_loading: false,
         };
         state.rebuild_rows();
         state
@@ -279,10 +282,11 @@ impl InitState {
                             self.status = "протокол: 1=openai-compat, 2=responses, 3=anthropic (введите цифру)".into();
                         }
                         3 => {
-                            // Протокол выбран цифрой; default_model — вводим модель вручную.
+                            // Протокол выбран цифрой; пробуем подгрузить модели с API.
                             self.input.clear();
+                            self.models_loading = true;
                             self.step = 2;
-                            self.status = "введите дефолтную модель".into();
+                            self.status = "загружаю список моделей…".into();
                         }
                         _ => {}
                     }
@@ -392,6 +396,51 @@ pub async fn run_init() -> Result<Config> {
                     state.status = format!("ошибка сохранения: {e}. Enter — повторить.");
                 }
             }
+        }
+
+        // Асинхронная подгрузка моделей для Custom-провайдера.
+        if state.models_loading {
+            state.models_loading = false;
+            let url = state.custom_url.clone();
+            let key = state.custom_key.clone();
+            let kind = match state.custom_kind_idx {
+                1 => EndpointKind::OpenaiResponses,
+                2 => EndpointKind::Anthropic,
+                _ => EndpointKind::OpenaiCompat,
+            };
+            // Запрашиваем только для OpenAI-compat (есть /v1/models).
+            if kind == EndpointKind::OpenaiCompat {
+                let client = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(5))
+                    .build()
+                    .ok();
+                if let Some(client) = client {
+                    let req = client
+                        .get(format!("{}/models", url.trim_end_matches('/')))
+                        .header("Authorization", format!("Bearer {key}"))
+                        .header("Content-Type", "application/json");
+                    match req.send().await {
+                        Ok(resp) if resp.status().is_success() => {
+                            if let Ok(body) = resp.json::<serde_json::Value>().await {
+                                let ids: Vec<String> = body["data"]
+                                    .as_array()
+                                    .unwrap_or(&vec![])
+                                    .iter()
+                                    .filter_map(|m| m["id"].as_str().map(|s| s.to_string()))
+                                    .collect();
+                                if !ids.is_empty() {
+                                    state.models = ids;
+                                    state.status =
+                                        format!("выберите модель ({} шт.)", state.models.len());
+                                    continue; // перерисовать с моделями
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            state.status = "введите дефолтную модель (Enter — сохранить)".into();
         }
 
         let maybe_ev = events.next().await;
@@ -816,6 +865,7 @@ mod tests {
             default_model: String::new(),
             status: String::new(),
             done: false,
+            models_loading: false,
         };
         s.rebuild_rows();
         s

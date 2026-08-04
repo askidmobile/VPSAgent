@@ -31,7 +31,7 @@ use vpsagent_daemon::RpcClient;
 use app::App;
 
 /// Запустить TUI: подключиться к демону, создать/выбрать сессию, основной цикл.
-pub async fn run(config: &Config, cwd: &str) -> Result<()> {
+pub async fn run(config: &Config, cwd: &str, model: Option<&str>) -> Result<()> {
     // Подключение к демону.
     let socket = config.paths.socket.clone();
     if !socket.exists() {
@@ -45,7 +45,7 @@ pub async fn run(config: &Config, cwd: &str) -> Result<()> {
         .request(
             &Request::SessionCreate {
                 cwd: cwd.to_string(),
-                model: None,
+                model: model.map(|s| s.to_string()),
             },
             &mut |_| {},
         )

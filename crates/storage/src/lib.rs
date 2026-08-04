@@ -27,9 +27,8 @@ impl Storage {
             }
             // Миграция v0.2.x → v0.3.0: колонка provider в agents.
             // ALTER TABLE ADD COLUMN IF NOT EXISTS нет в SQLite — пробуем, игнорируем ошибку.
-            let _ = c.execute_batch(
-                "ALTER TABLE agents ADD COLUMN provider TEXT NOT NULL DEFAULT ''",
-            );
+            let _ =
+                c.execute_batch("ALTER TABLE agents ADD COLUMN provider TEXT NOT NULL DEFAULT ''");
             Ok(())
         })
         .await?;

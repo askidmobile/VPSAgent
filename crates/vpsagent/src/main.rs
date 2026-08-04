@@ -588,8 +588,6 @@ async fn run_upgrade(check: bool, force: bool) -> Result<()> {
     }
 
     // 5. Распаковать бинарь во временный файл, атомарно заменить текущий.
-    let exe = std::env::current_exe()?;
-    eprintln!("устанавливаю в {}…", exe.display());
 
     // tar.gz содержит файл 'vpsagent' — распакуем в tmpdir.
     let output = std::process::Command::new("tar")

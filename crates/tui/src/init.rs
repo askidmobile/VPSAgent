@@ -18,7 +18,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
 use ratatui::Terminal;
 use vpsagent_core::{Config, EndpointKind, ModelEndpoint};
 
@@ -400,12 +400,10 @@ fn render(f: &mut ratatui::Frame, state: &InitState) {
 
     let body_text = match state.step {
         0 => {
-            let mut lines = vec!["Выберите провайдер (↑/↓, Enter):\n".to_string()];
-            for i in 0..state.menu_len {
-                let mark = if i == state.focus { ">" } else { " " };
-                lines.push(format!("{} {}", mark, state.menu_label(i)));
-            }
-            lines.join("\n")
+            // Шаг выбора провайдера рендерится отдельно ratatui::List ниже —
+            // List с ListState сам скроллит к выделенному элементу (фикс бага,
+            // когда курсор уходил за пределы экрана при длинном реестре).
+            String::new()
         }
         1 => {
             if matches!(state.pick, Some(Pick::Custom)) {
@@ -449,10 +447,45 @@ fn render(f: &mut ratatui::Frame, state: &InitState) {
         3 => "Сохранение…".to_string(),
         _ => String::new(),
     };
-    let body = Paragraph::new(body_text)
-        .block(Block::default().borders(Borders::ALL).title(" Настройка "))
-        .wrap(Wrap { trim: false });
-    f.render_widget(body, chunks[1]);
+
+    if state.step == 0 {
+        // Рендерим список провайдеров через ratatui::List — ListState
+        // автоматически поддерживает скролл к выделенному элементу, чтобы
+        // курсор не уходил за пределы видимой области (фикс scroll-бага).
+        let items: Vec<ListItem> = (0..state.menu_len)
+            .map(|i| {
+                let label = state.menu_label(i);
+                if i == state.focus {
+                    ListItem::new(format!("▶ {}", label)).style(
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                } else {
+                    ListItem::new(format!("  {}", label))
+                }
+            })
+            .collect();
+        let list = List::new(items)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Настройка — выберите провайдера "),
+            )
+            .highlight_style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            );
+        let mut list_state = ListState::default();
+        list_state.select(Some(state.focus));
+        f.render_stateful_widget(list, chunks[1], &mut list_state);
+    } else {
+        let body = Paragraph::new(body_text)
+            .block(Block::default().borders(Borders::ALL).title(" Настройка "))
+            .wrap(Wrap { trim: false });
+        f.render_widget(body, chunks[1]);
+    }
 
     let status = Paragraph::new(state.status.as_str())
         .style(Style::default().fg(Color::Yellow))

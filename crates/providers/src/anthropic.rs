@@ -431,8 +431,8 @@ mod tests {
     #[test]
     fn anthropic_delta_signature_has_field() {
         let raw = r#"{"type":"signature_delta","signature":"base64sig"}"#;
-        let d: AnthropicDelta = serde_json::from_str(raw)
-            .expect("signature_delta с полем signature должен парситься");
+        let d: AnthropicDelta =
+            serde_json::from_str(raw).expect("signature_delta с полем signature должен парситься");
         assert!(
             matches!(d, AnthropicDelta::SignatureDelta { ref signature } if signature == "base64sig"),
             "ожидал SignatureDelta с signature, got {d:?}"
@@ -443,8 +443,7 @@ mod tests {
     #[test]
     fn anthropic_delta_text_still_parses() {
         let raw = r#"{"type":"text_delta","text":"ответ"}"#;
-        let d: AnthropicDelta =
-            serde_json::from_str(raw).expect("text_delta должен парситься");
+        let d: AnthropicDelta = serde_json::from_str(raw).expect("text_delta должен парситься");
         assert!(matches!(d, AnthropicDelta::TextDelta { ref text } if text == "ответ"));
     }
 }

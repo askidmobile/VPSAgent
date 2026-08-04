@@ -297,10 +297,7 @@ mod tests {
         config.endpoints.push(custom);
 
         let found = config.endpoint_for_model("kimi-k2");
-        assert!(
-            found.is_some(),
-            "модель из списка models должна находится"
-        );
+        assert!(found.is_some(), "модель из списка models должна находится");
         assert_eq!(found.unwrap().name, "kimi");
 
         let missing = config.endpoint_for_model("несуществующая-модель");

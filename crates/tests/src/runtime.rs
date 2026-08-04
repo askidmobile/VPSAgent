@@ -120,10 +120,7 @@ async fn agent_loop_runs_tool_call_with_mock() {
 async fn agent_loop_emits_thinking_then_text() {
     let db = tmp_db();
     let storage = Storage::open(&db).await.unwrap();
-    let session = storage
-        .create_session("/tmp", Some("mock"))
-        .await
-        .unwrap();
+    let session = storage.create_session("/tmp", Some("mock")).await.unwrap();
     let config = Arc::new(Config::default());
 
     let provider: Arc<dyn vpsagent_providers::Provider> = Arc::new(MockProvider::new(vec![

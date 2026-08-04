@@ -185,8 +185,8 @@ async fn rpc_message_send_error_surfaced() {
     let server_handle = tokio::spawn(async move { server.serve(&socket_clone).await });
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-    use vpsagent_daemon::RpcClient;
     use vpsagent_core::Id;
+    use vpsagent_daemon::RpcClient;
     let client = RpcClient::connect(&socket).await.unwrap();
 
     // MessageSend на несуществующей сессии → демон вернёт Response::Error
@@ -230,7 +230,8 @@ async fn rpc_message_send_error_surfaced() {
         "ошибка MessageSend должна сурфейситься через drain_events"
     );
     assert!(
-        errs.iter().any(|m| m.contains("не найдена") || !m.is_empty()),
+        errs.iter()
+            .any(|m| m.contains("не найдена") || !m.is_empty()),
         "ожидал осмысленное сообщение об ошибке, got {errs:?}"
     );
 

@@ -2,9 +2,76 @@
 //!
 //! models.dev — открытый реестр провайдеров и моделей (AI SDK). Используем для
 //! списка известных провайдеров, их base_url и моделей. Сетевой сбой → встроенный список.
+//!
+//! Провайдеры классифицируются по [`Category`] (top-tier ручной список, остальные —
+//! `Other`) для группировки в init-мастере.
 
 use serde::Deserialize;
 use std::collections::HashMap;
+
+/// Категория провайдера для группировки в init-мастере.
+///
+/// Порядок вариантов важен: он задаёт сортировку категорий в UI (top-tier первыми,
+/// `Other` — последним). Ручная классификация top-25 провайдеров models.dev.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Category {
+    /// Вендоры моделей прямого API: OpenAI, Anthropic, Google, xAI, Mistral ...
+    FirstParty,
+    /// Облака и inference-провайдеры: Azure, Bedrock, Groq, Deep Infra, ...
+    Cloud,
+    /// Агрегаторы/роутеры поверх многих моделей: OpenRouter, Poe, ...
+    Aggregator,
+    /// Локальный self-hosted (Ollama и т.п.).
+    Local,
+    /// Всё остальное (длинный хвост models.dev).
+    Other,
+}
+
+impl Category {
+    /// Человекочитаемое имя группы для UI.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::FirstParty => "First-party API",
+            Self::Cloud => "Cloud / inference",
+            Self::Aggregator => "Агрегаторы",
+            Self::Local => "Local / self-hosted",
+            Self::Other => "Другие",
+        }
+    }
+
+    /// Порядок сортировки (меньше = выше в списке).
+    pub fn order(self) -> u8 {
+        match self {
+            Self::FirstParty => 0,
+            Self::Cloud => 1,
+            Self::Aggregator => 2,
+            Self::Local => 3,
+            Self::Other => 4,
+        }
+    }
+}
+
+/// Классифицировать провайдера по id в категорию (ручной список top-tier).
+///
+/// Провайдеры, не попавшие в список — `Category::Other`. Список основан на
+/// анализе api.json models.dev (180 провайдеров, ~25 в категориях).
+pub fn provider_category(id: &str) -> Category {
+    match id {
+        // First-party: вендоры моделей прямого API.
+        "openai" | "anthropic" | "google" | "xai" | "mistral" | "cohere"
+        | "perplexity" | "zhipuai" | "deepseek" | "qwen" => Category::FirstParty,
+        // Cloud / inference: хостинг и ускоренный вывод моделей.
+        "azure" | "amazon-bedrock" | "google-vertex" | "together" | "fireworks"
+        | "deepinfra" | "groq" | "cerebras" | "nvidia" | "nebius" | "baseten"
+        | "siliconflow" | "scaleway" => Category::Cloud,
+        // Агрегаторы: роутеры поверх многих вендоров.
+        "openrouter" | "anyapi" | "poe" | "aihubmix" | "merge-gateway"
+        | "ai-gateway" => Category::Aggregator,
+        // Local / self-hosted.
+        "ollama" => Category::Local,
+        _ => Category::Other,
+    }
+}
 
 /// Провайдер из реестра.
 #[derive(Debug, Clone)]
@@ -64,30 +131,14 @@ async fn try_load() -> anyhow::Result<Vec<RegistryProvider>> {
             models: p.models.into_keys().collect(),
         })
         .collect();
-    // Сортируем: известные первыми, остальные по имени.
-    out.sort_by_key(|p| !is_known(&p.id));
+    // Сортируем: по категории (top-tier первыми), внутри категории — по имени.
     out.sort_by(|a, b| {
-        let ak = !is_known(&a.id);
-        let bk = !is_known(&b.id);
-        ak.cmp(&bk).then(a.name.cmp(&b.name))
+        provider_category(&a.id)
+            .order()
+            .cmp(&provider_category(&b.id).order())
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     Ok(out)
-}
-
-/// Известные (приоритетные в списке).
-fn is_known(id: &str) -> bool {
-    matches!(
-        id,
-        "openai"
-            | "anthropic"
-            | "openrouter"
-            | "azure"
-            | "google"
-            | "ollama"
-            | "groq"
-            | "xai"
-            | "mistral"
-    )
 }
 
 /// Встроенный fallback (если models.dev недоступен).

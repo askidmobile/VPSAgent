@@ -9,7 +9,7 @@ pub mod registry;
 pub mod ui;
 
 pub use init::run_init;
-pub use registry::{endpoint_kind, load_registry, RegistryProvider};
+pub use registry::{endpoint_kind, load_registry, provider_category, Category, RegistryProvider};
 
 use std::io::stdout;
 use std::path::{Path, PathBuf};

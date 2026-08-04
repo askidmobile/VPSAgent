@@ -124,11 +124,44 @@ impl App {
         self.auto_scroll = true;
     }
 
+    /// Добавить дельту reasoning/thinking-контента агента. Маркер «💭 »
+    /// отделяет мышление от ответа в общем потоке фокус-панели. Отдельная
+    /// цветная панель — future (меняет layout). В историю не сохраняется
+    /// (display-only). agent_busy=true — статус-бар показывает «● работаю»
+    /// уже на этапе мышления, до первого content.
+    pub fn apply_thinking_delta(&mut self, agent_id: Id, text: &str) {
+        let marked = format!("💭 {text}");
+        let buf = self.texts.entry(agent_id).or_default();
+        buf.push_str(&marked);
+        if buf.len() > MAX_AGENT_TEXT {
+            let mut start = buf.len() - MAX_AGENT_TEXT;
+            while !buf.is_char_boundary(start) {
+                start += 1;
+            }
+            buf.drain(..start);
+        }
+        if self.selected_agent.is_none() {
+            self.agent_text.push_str(&marked);
+            if self.agent_text.len() > MAX_AGENT_TEXT {
+                let mut start = self.agent_text.len() - MAX_AGENT_TEXT;
+                while !self.agent_text.is_char_boundary(start) {
+                    start += 1;
+                }
+                self.agent_text.drain(..start);
+            }
+        }
+        self.agent_busy = true;
+        self.auto_scroll = true;
+    }
+
     /// Применить событие от демона к состоянию.
     pub fn apply_event(&mut self, ev: EventKind) {
         match ev {
             EventKind::TextDelta { agent_id, text } => {
                 self.apply_text_delta(agent_id, &text);
+            }
+            EventKind::ThinkingDelta { agent_id, text } => {
+                self.apply_thinking_delta(agent_id, &text);
             }
             EventKind::UserMessage { agent_id, text } => {
                 self.apply_text_delta(agent_id, &format!("\n\n--- агент ---\n{text}"));

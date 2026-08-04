@@ -14,6 +14,8 @@ use crate::{ChatRequest, Provider, StreamChunk};
 #[derive(Clone)]
 pub enum MockStep {
     Text(String),
+    /// Reasoning/thinking-дельта (эмитится как StreamChunk::ThinkingDelta).
+    Thinking(String),
     ToolCall { name: String, input: Value },
     Done,
 }
@@ -57,6 +59,7 @@ impl Provider for MockProvider {
                 let step = step?;
                 let (chunk, done) = match step {
                     MockStep::Text(t) => (StreamChunk::TextDelta(t), false),
+                    MockStep::Thinking(t) => (StreamChunk::ThinkingDelta(t), false),
                     MockStep::ToolCall { name, input } => (
                         StreamChunk::ToolCall {
                             id: format!("call-{i}"),
@@ -81,6 +84,16 @@ impl Provider for MockProvider {
 /// Хелпер: конфиг, который просто отвечает текстом и завершается.
 pub fn text_only(text: &str) -> Vec<MockStep> {
     vec![MockStep::Text(text.to_string()), MockStep::Done]
+}
+
+/// Хелпер: reasoning (thinking), затем текстовый ответ — воспроизводит поведение
+/// reasoning-моделей (Kimi K2, DeepSeek-R1, Claude с thinking, GPT-5).
+pub fn thinking_then_text(thinking: &str, text: &str) -> Vec<MockStep> {
+    vec![
+        MockStep::Thinking(thinking.to_string()),
+        MockStep::Text(text.to_string()),
+        MockStep::Done,
+    ]
 }
 
 /// Конфиг: один tool-call, затем ответ текстом.

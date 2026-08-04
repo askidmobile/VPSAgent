@@ -249,6 +249,19 @@ impl Provider for OpenaiCompat {
                             Some(d) => d,
                             None => continue,
                         };
+                        // reasoning_content (Kimi K2, DeepSeek-R1) / thinking (Qwen3)
+                        // идёт ПЕРЕД content: пока модель размышляет, content == None.
+                        // Без этого reasoning-чанки молча пропускались — агент завершался
+                        // без единого TextDelta (симптом «привет → агент завершил, но
+                        // ответа нет»). yield ThinkingDelta до content и поднимаем
+                        // yielded_any, чтобы ретрай-логика (C7) не перезапустила запрос
+                        // и не продублировала reasoning.
+                        if let Some(r) = delta.reasoning_content {
+                            if !r.is_empty() {
+                                yielded_any = true;
+                                yield StreamChunk::ThinkingDelta(r);
+                            }
+                        }
                         if let Some(text) = delta.content {
                             if !text.is_empty() {
                                 yielded_any = true;
@@ -324,6 +337,11 @@ struct Choice {
 #[derive(Debug, Deserialize)]
 struct Delta {
     content: Option<String>,
+    /// Reasoning/thinking-контент: Kimi K2/DeepSeek-R1 шлют `reasoning_content`,
+    /// Qwen3 — `thinking`. alias покрывает оба имени; `default` — поле опционально
+    /// (у обычных OpenAI-моделей его нет).
+    #[serde(default, alias = "thinking")]
+    reasoning_content: Option<String>,
     tool_calls: Option<Vec<ToolCallDelta>>,
 }
 
@@ -351,3 +369,49 @@ struct Usage {
 
 // async-stream для try_stream! — нужен в deps.
 // (через explicit re-export для избежания лишних public-crate-зависимостей в фазе 1)
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Kimi K2 / DeepSeek-R1 шлют reasoning_content отдельным полем, ПЕРЕД
+    /// content. Без этого поля reasoning-токены молча теряются при десериализации
+    /// (симптом «привет → агент завершил, но ответа нет»).
+    #[test]
+    fn delta_parses_reasoning_content() {
+        let raw = r#"{"reasoning_content":"думаю над задачей"}"#;
+        let d: Delta = serde_json::from_str(raw).expect("reasoning_content должен парситься");
+        assert_eq!(d.reasoning_content.as_deref(), Some("думаю над задачей"));
+        assert!(d.content.is_none(), "content не должно быть при чистом reasoning");
+        assert!(d.tool_calls.is_none());
+    }
+
+    /// Qwen3 использует имя `thinking` вместо `reasoning_content` — alias
+    /// покрывает оба имени.
+    #[test]
+    fn delta_parses_thinking_alias() {
+        let raw = r#"{"thinking":"размышляю шаг за шагом"}"#;
+        let d: Delta = serde_json::from_str(raw).expect("thinking-alias должен парситься");
+        assert_eq!(d.reasoning_content.as_deref(), Some("размышляю шаг за шагом"));
+    }
+
+    /// Обычная OpenAI-модель не шлёт reasoning_content — поле опционально,
+    /// дельта с одним content десериализуется без ошибок.
+    #[test]
+    fn delta_without_reasoning_still_parses() {
+        let raw = r#"{"content":"ответ"}"#;
+        let d: Delta = serde_json::from_str(raw).expect("content-only должен парситься");
+        assert_eq!(d.content.as_deref(), Some("ответ"));
+        assert!(d.reasoning_content.is_none(), "reasoning_content должно быть None");
+    }
+
+    /// Reasoning и content могут идти вместе в одном чанке (граница фаз).
+    #[test]
+    fn delta_with_both_reasoning_and_content() {
+        let raw = r#"{"reasoning_content":"финал размышлений","content":"ответ"}"#;
+        let d: Delta =
+            serde_json::from_str(raw).expect("оба поля должны парситься вместе");
+        assert_eq!(d.reasoning_content.as_deref(), Some("финал размышлений"));
+        assert_eq!(d.content.as_deref(), Some("ответ"));
+    }
+}

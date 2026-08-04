@@ -768,6 +768,22 @@ async fn run_headless(
                 }
                 last_text.push_str(&text);
             }
+            EventKind::ThinkingDelta { text, .. } => {
+                if output_format == "text" {
+                    print!("💭 {text}");
+                    use std::io::Write;
+                    let _ = std::io::stdout().flush();
+                } else if output_format == "stream-json" {
+                    let text = text.clone();
+                    println!(
+                        "{}",
+                        serde_json::to_string(
+                            &serde_json::json!({ "type": "thinking_delta", "text": text })
+                        )
+                        .unwrap()
+                    );
+                }
+            }
             EventKind::UserMessage { text, .. } => {
                 if output_format == "text" {
                     println!("\n--- агент ---\n{text}");
@@ -843,6 +859,7 @@ async fn run_attach(config: &Config, session_id: Option<&str>) -> Result<()> {
     client
         .drain_events(|ev| match ev.kind {
             EventKind::TextDelta { text, .. } => print!("{text}"),
+            EventKind::ThinkingDelta { text, .. } => print!("💭 {text}"),
             EventKind::UserMessage { text, .. } => println!("\n--- агент ---\n{text}"),
             EventKind::ToolCallStart { name, .. } => println!("\n[tool: {name}]"),
             EventKind::ToolCallEnd {

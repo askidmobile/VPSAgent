@@ -105,6 +105,10 @@ pub enum Response {
 pub enum EventKind {
     /// Дельта текста ответа модели.
     TextDelta { agent_id: Id, text: String },
+    /// Дельта reasoning/thinking-контента (Kimi K2, DeepSeek-R1, Claude
+    /// thinking, GPT-5 reasoning summary). Display-only: в историю диалога
+    /// не сохраняется (ContentBlock::Thinking — future). Идёт ПЕРЕД TextDelta.
+    ThinkingDelta { agent_id: Id, text: String },
     /// Начало вызова инструмента.
     ToolCallStart {
         agent_id: Id,
@@ -354,6 +358,34 @@ mod tests {
         match back {
             Response::DaemonStatus(s) => assert_eq!(s.pid, 99),
             other => panic!("ожидался DaemonStatus, получили {other:?}"),
+        }
+    }
+
+    /// `EventKind::ThinkingDelta` — serde round-trip. Сериализуется с
+    /// `#[serde(tag = "kind", content = "data", rename_all = "snake_case")]`
+    /// как `{"kind":"thinking_delta","data":{"agent_id":...,"text":...}}`.
+    /// Storage agnostic к вариантам через serde, но фиксирует контракт имени.
+    #[test]
+    fn eventkind_thinking_delta_roundtrip() {
+        let agent_id = crate::Id::nil();
+        let ev = EventKind::ThinkingDelta {
+            agent_id,
+            text: "размышляю".into(),
+        };
+        let json = serde_json::to_string(&ev).unwrap();
+        assert!(
+            json.contains("\"kind\":\"thinking_delta\""),
+            "ожидал kind=thinking_delta в: {json}"
+        );
+        assert!(json.contains("размышляю"), "text должен попасть в json: {json}");
+
+        let back: EventKind = serde_json::from_str(&json).unwrap();
+        match back {
+            EventKind::ThinkingDelta { agent_id: aid, text } => {
+                assert_eq!(aid, agent_id);
+                assert_eq!(text, "размышляю");
+            }
+            other => panic!("ожидал ThinkingDelta, получили {other:?}"),
         }
     }
 }

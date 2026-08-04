@@ -78,6 +78,10 @@ pub struct ChatRequest {
 pub enum StreamChunk {
     /// Дельта текста.
     TextDelta(String),
+    /// Дельта reasoning/thinking-контента (Kimi K2 reasoning_content, Claude
+    /// thinking, GPT-5 reasoning summary, DeepSeek-R1 reasoning_content). Идёт
+    /// ПЕРЕД TextDelta; в историю диалога не сохраняется (display-only).
+    ThinkingDelta(String),
     /// Запуск инструмента (может прийти в одном чанке).
     ToolCall {
         id: String,

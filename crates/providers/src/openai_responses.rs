@@ -241,6 +241,14 @@ impl Provider for OpenaiResponses {
                             yielded_any = true;
                             yield StreamChunk::TextDelta(delta);
                         }
+                        // GPT-5 reasoning summary / reasoning-дельта — эмитим
+                        // как ThinkingDelta (display-only). Поднимаем yielded_any,
+                        // чтобы ретрай (C7) не перезапустил запрос.
+                        ResponsesEvent::ResponseReasoningSummaryTextDelta { delta }
+                        | ResponsesEvent::ResponseReasoningTextDelta { delta } => {
+                            yielded_any = true;
+                            yield StreamChunk::ThinkingDelta(delta);
+                        }
                         ResponsesEvent::ResponseFunctionCallArgumentsDelta { item_id: Some(id), delta } => {
                             // Копим delta-чанки аргументов по item_id (C8).
                             args_by_item.entry(id).or_default().push_str(&delta);
@@ -302,6 +310,13 @@ impl Provider for OpenaiResponses {
 enum ResponsesEvent {
     #[serde(rename = "response.output_text.delta")]
     ResponseOutputTextDelta { delta: String },
+    /// GPT-5 reasoning summary (summary_text) — основная форма reasoning в
+    /// Responses API. Эмитим как ThinkingDelta (display-only).
+    #[serde(rename = "response.reasoning_summary_text.delta")]
+    ResponseReasoningSummaryTextDelta { delta: String },
+    /// Нативный reasoning-дельта (менее документирован; покрываем на случай).
+    #[serde(rename = "response.reasoning_text.delta")]
+    ResponseReasoningTextDelta { delta: String },
     #[serde(rename = "response.function_call_arguments.delta")]
     ResponseFunctionCallArgumentsDelta {
         // item_id связывает delta-чанки с конкретным function_call (C8).

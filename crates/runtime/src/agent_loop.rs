@@ -206,6 +206,15 @@ pub async fn run_agent(mut params: AgentParams) -> Result<()> {
                         text: t,
                     });
                 }
+                // Reasoning/thinking: эмитим в стрим событий (TUI/headless
+                // покажут «💭 …»). В историю диалога НЕ сохраняем —
+                // ContentBlock::Thinking для multi-turn roundtrip — future.
+                StreamChunk::ThinkingDelta(t) => {
+                    let _ = params.event_tx.send(EventKind::ThinkingDelta {
+                        agent_id: params.agent_id,
+                        text: t,
+                    });
+                }
                 StreamChunk::ToolCall { id, name, input } => {
                     tool_calls.push((id.clone(), name.clone(), input.clone()));
                     let _ = params.event_tx.send(EventKind::ToolCallStart {

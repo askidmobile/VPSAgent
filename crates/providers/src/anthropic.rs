@@ -265,10 +265,17 @@ impl Provider for Anthropic {
                                 AnthropicDelta::InputJsonDelta { partial_json } => {
                                     current_tool_input.push_str(&partial_json);
                                 }
-                                // Остальные delta-типы (thinking и т.д.) пропускаем.
-                                AnthropicDelta::ThinkingDelta
-                                | AnthropicDelta::SignatureDelta
-                                | AnthropicDelta::Other => {}
+                                // Extended thinking: эмитим как ThinkingDelta
+                                // (display-only; в историю не сохраняется).
+                                // Поднимаем yielded_any — чтобы ретрай (C7) не
+                                // перезапустил запрос и не продублировал thinking.
+                                AnthropicDelta::ThinkingDelta { thinking } => {
+                                    yielded_any = true;
+                                    yield StreamChunk::ThinkingDelta(thinking);
+                                }
+                                // signature нужен для multi-turn roundtrip (future),
+                                // здесь только парсим — не эмитим.
+                                AnthropicDelta::SignatureDelta { .. } | AnthropicDelta::Other => {}
                             }
                         }
                         AnthropicEvent::ContentBlockStart {
@@ -376,10 +383,16 @@ enum AnthropicDelta {
     TextDelta { text: String },
     #[serde(rename = "input_json_delta")]
     InputJsonDelta { partial_json: String },
+    /// Extended thinking: инкрементальные токены размышления (до content).
     #[serde(rename = "thinking_delta")]
-    ThinkingDelta,
+    ThinkingDelta { thinking: String },
+    /// Подпись thinking-блока (нужна для multi-turn roundtrip — future;
+    /// здесь только парсим, не эмитим).
     #[serde(rename = "signature_delta")]
-    SignatureDelta,
+    SignatureDelta {
+        #[allow(dead_code)]
+        signature: String,
+    },
     #[serde(other)]
     Other,
 }
@@ -393,4 +406,45 @@ struct MessageStartBody {
 struct AnthropicUsage {
     input_tokens: Option<u32>,
     output_tokens: Option<u32>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Anthropic extended thinking: `thinking_delta` несёт поле `thinking` с
+    /// инкрементальными токенами размышления. До фикса это был unit-вариант
+    /// без поля — данные терялись при десериализации.
+    #[test]
+    fn anthropic_delta_thinking_has_field() {
+        let raw = r#"{"type":"thinking_delta","thinking":"шаг рассуждения"}"#;
+        let d: AnthropicDelta =
+            serde_json::from_str(raw).expect("thinking_delta с полем thinking должен парситься");
+        assert!(
+            matches!(d, AnthropicDelta::ThinkingDelta { ref thinking } if thinking == "шаг рассуждения"),
+            "ожидал ThinkingDelta {{ thinking: \"шаг рассуждения\" }}, got {d:?}"
+        );
+    }
+
+    /// `signature_delta` парсится с полем signature (для future multi-turn
+    /// roundtrip); пока не эмитится, но должен десериализоваться без ошибок.
+    #[test]
+    fn anthropic_delta_signature_has_field() {
+        let raw = r#"{"type":"signature_delta","signature":"base64sig"}"#;
+        let d: AnthropicDelta = serde_json::from_str(raw)
+            .expect("signature_delta с полем signature должен парситься");
+        assert!(
+            matches!(d, AnthropicDelta::SignatureDelta { ref signature } if signature == "base64sig"),
+            "ожидал SignatureDelta с signature, got {d:?}"
+        );
+    }
+
+    /// Обычный text_delta по-прежнему парсится (регрессия на правку enum).
+    #[test]
+    fn anthropic_delta_text_still_parses() {
+        let raw = r#"{"type":"text_delta","text":"ответ"}"#;
+        let d: AnthropicDelta =
+            serde_json::from_str(raw).expect("text_delta должен парситься");
+        assert!(matches!(d, AnthropicDelta::TextDelta { ref text } if text == "ответ"));
+    }
 }

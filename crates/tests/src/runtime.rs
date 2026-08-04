@@ -110,6 +110,103 @@ async fn agent_loop_runs_tool_call_with_mock() {
     let _ = std::fs::remove_file(&db);
 }
 
+/// Reasoning-модели (Kimi K2, DeepSeek-R1, Claude thinking, GPT-5) ШлюТ
+/// thinking-дельту ПЕРЕД content. До фикса reasoning молча отбрасывался, агент
+/// завершался без TextDelta — симптом «привет → агент завершил, но ответа нет».
+/// Здесь проверяем полный e2e: MockProvider эмитит Thinking, затем Text,
+/// agent_loop пробрасывает оба в стрим событий (ThinkingDelta, TextDelta),
+/// thinking НЕ попадает в историю диалога (display-only).
+#[tokio::test]
+async fn agent_loop_emits_thinking_then_text() {
+    let db = tmp_db();
+    let storage = Storage::open(&db).await.unwrap();
+    let session = storage
+        .create_session("/tmp", Some("mock"))
+        .await
+        .unwrap();
+    let config = Arc::new(Config::default());
+
+    let provider: Arc<dyn vpsagent_providers::Provider> = Arc::new(MockProvider::new(vec![
+        MockStep::Thinking("размышляю над задачей".into()),
+        MockStep::Text("вот ответ".into()),
+        MockStep::Done,
+    ]));
+
+    let subagents = SubagentManager::new(storage.clone(), config.clone());
+    let (event_tx, mut rx) = mpsc::unbounded_channel::<EventKind>();
+    let (inbox_tx, inbox_rx) = mpsc::unbounded_channel::<String>();
+    let agent_id = uuid::Uuid::new_v4();
+    inbox_tx.send("привет".into()).unwrap();
+
+    let params = AgentParams {
+        session_id: session.id,
+        agent_id,
+        model: "mock".into(),
+        cwd: std::env::temp_dir(),
+        provider,
+        storage: storage.clone(),
+        event_tx,
+        inbox: inbox_rx,
+        cancel: CancellationToken::new(),
+        permissions: Permissions {
+            mode: vpsagent_core::PermissionMode::BypassPermissions,
+            allow: vec![],
+            deny: vec![],
+        },
+        subagents: subagents.clone(),
+        initial_history: vec![],
+        allowed_tools: None,
+        def_prompt: None,
+        pending: vpsagent_runtime::PendingPermissions::new(),
+        pending_requests: vpsagent_runtime::pending::PendingRequests::new(),
+    };
+    run_agent(params).await.unwrap();
+
+    // Собираем все события (event_tx дропнут run_agent → канал закроется).
+    let mut events: Vec<EventKind> = Vec::new();
+    while let Ok(ev) = rx.try_recv() {
+        events.push(ev);
+    }
+
+    // ThinkingDelta должна идти ПЕРЕД TextDelta.
+    let thinking_idx = events
+        .iter()
+        .position(|e| matches!(e, EventKind::ThinkingDelta { .. }));
+    let text_idx = events
+        .iter()
+        .position(|e| matches!(e, EventKind::TextDelta { .. }));
+    assert!(thinking_idx.is_some(), "должно быть ThinkingDelta-событие");
+    assert!(text_idx.is_some(), "должно быть TextDelta-событие");
+    assert!(
+        thinking_idx.unwrap() < text_idx.unwrap(),
+        "ThinkingDelta должна идти ПЕРЕД TextDelta"
+    );
+
+    // thinking — display-only, в историю диалога НЕ сохраняется.
+    let msgs = storage.list_messages(session.id).await.unwrap();
+    let assistant_texts: Vec<&str> = msgs
+        .iter()
+        .filter(|m| m.role == Role::Assistant)
+        .flat_map(|m| {
+            m.content.iter().filter_map(|b| match b {
+                ContentBlock::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+        })
+        .collect();
+    assert!(
+        assistant_texts.iter().any(|t| t.contains("вот ответ")),
+        "assistant-сообщение должно содержать ответ: {assistant_texts:?}"
+    );
+    assert!(
+        !assistant_texts
+            .iter()
+            .any(|t| t.contains("размышляю над задачей")),
+        "thinking не должен попадать в историю диалога (display-only): {assistant_texts:?}"
+    );
+    let _ = std::fs::remove_file(&db);
+}
+
 #[tokio::test]
 async fn spawn_subagent_with_task_tool() {
     let db = tmp_db();

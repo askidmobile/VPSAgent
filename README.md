@@ -103,6 +103,20 @@ vpsagent attach [session-id]
 vpsagent mcp-serve
 ```
 
+### Обновление
+
+Самообновление из GitHub Releases — проверяет, скачивает и заменяет бинарь:
+
+```bash
+vpsagent upgrade           # проверить и установить новую версию
+vpsagent upgrade --check   # только проверить (без установки)
+vpsagent upgrade --force   # переустановить даже если версия та же
+```
+
+Команда запрашивает latest-релиз через GitHub API, сравнивает semver, скачивает
+`tar.gz` с musl-бинарем, проверяет SHA256 и атомарно заменяет текущий бинарь.
+Перезапустите `vpsagent` после обновления.
+
 ### Управление демоном
 
 `vpsagent` — daemon-first: headless-демон держит агентов и сессии, переживает

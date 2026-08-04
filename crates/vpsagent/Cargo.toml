@@ -17,6 +17,7 @@ tracing-subscriber.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
+reqwest.workspace = true
 vpsagent-core = { path = "../core" }
 vpsagent-daemon = { path = "../daemon" }
 vpsagent-tui = { path = "../tui" }

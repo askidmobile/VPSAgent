@@ -63,6 +63,15 @@ enum Command {
     McpServe,
     /// Мастер инициализации: настройка провайдеров и ключей (интерактивный TUI).
     Init,
+    /// Самообновление: проверить/скачать/установить новую версию из GitHub Releases.
+    Upgrade {
+        /// Только проверить наличие обновления (без установки).
+        #[arg(long)]
+        check: bool,
+        /// Обновить даже если версия совпадает.
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 /// Подкоманды управления жизненным циклом демона (`vpsagent daemon <cmd>`).
@@ -193,6 +202,7 @@ fn main() -> Result<()> {
                 );
                 Ok(())
             }
+            Some(Command::Upgrade { check, force }) => run_upgrade(check, force).await,
         }
     })
 }
@@ -457,6 +467,211 @@ fn format_uptime(secs: u64) -> String {
     } else {
         format!("{s}s")
     }
+}
+
+/// Константы для самообновления (GitHub Releases).
+const UPD_OWNER: &str = "askidmobile";
+const UPD_REPO: &str = "VPSAgent";
+const UPD_ARCH: &str = "x86_64-unknown-linux-musl";
+
+/// `vpsagent upgrade` — самообновление из GitHub Releases.
+///
+/// Текущая версия — `env!("CARGO_PKG_VERSION")`. latest — через GitHub API.
+/// Если latest > текущей (или `--force`) — скачать tar.gz, проверить SHA256,
+/// атомарно заменить бинарь (rename), перезапустить не нужно (следующий запуск
+/// подхватит новый бинарь). `--check` — только проверить, без установки.
+async fn run_upgrade(check: bool, force: bool) -> Result<()> {
+    let current = env!("CARGO_PKG_VERSION");
+    eprintln!("текущая версия: v{current}");
+
+    // 1. Узнать latest версию через GitHub API.
+    let api_url = format!(
+        "https://api.github.com/repos/{}/{}/releases/latest",
+        UPD_OWNER, UPD_REPO
+    );
+    let resp = reqwest::Client::builder()
+        .user_agent(concat!("vpsagent/", env!("CARGO_PKG_VERSION")))
+        .build()?
+        .get(&api_url)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("не удалось узнать последнюю версию: {e}"))?;
+
+    if !resp.status().is_success() {
+        anyhow::bail!(
+            "GitHub API вернул {}: проверьте доступ к github.com",
+            resp.status()
+        );
+    }
+    let body: serde_json::Value = resp.json().await?;
+    let latest = body
+        .get("tag_name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("ответ GitHub API не содержит tag_name"))?
+        .trim_start_matches('v')
+        .to_string();
+    eprintln!("последняя версия: v{latest}");
+
+    // 2. Сравнение версий (простая семантика: major.minor.patch).
+    let need_update = force || version_is_newer(&latest, current);
+    if !need_update {
+        eprintln!(
+            "обновление не требуется (уже актуально). Используйте --force для переустановки."
+        );
+        return Ok(());
+    }
+    if check {
+        eprintln!(
+            "доступно обновление: v{current} → v{latest} (запустите без --check для установки)"
+        );
+        return Ok(());
+    }
+
+    // 3. Скачать tar.gz из ассетов релиза.
+    let tarball_name = format!("vpsagent-v{latest}-{UPD_ARCH}.tar.gz");
+    let checksum_name = format!("{tarball_name}.sha256");
+    let assets = body
+        .get("assets")
+        .and_then(|a| a.as_array())
+        .ok_or_else(|| anyhow::anyhow!("ответ GitHub API не содержит assets"))?;
+    let find_asset = |name: &str| -> Result<String> {
+        assets
+            .iter()
+            .find(|a| a.get("name").and_then(|n| n.as_str()) == Some(name))
+            .and_then(|a| a.get("browser_download_url"))
+            .and_then(|u| u.as_str())
+            .map(|s| s.to_string())
+            .ok_or_else(|| anyhow::anyhow!("ассет '{name}' не найден в релизе v{latest}"))
+    };
+    let tarball_url = find_asset(&tarball_name)?;
+    let checksum_url = find_asset(&checksum_name).ok();
+
+    eprintln!("скачиваю {tarball_name}…");
+    let tmpdir = std::env::temp_dir().join(format!("vpsagent-upgrade-{}", std::process::id()));
+    std::fs::create_dir_all(&tmpdir)?;
+    let tarball_path = tmpdir.join(&tarball_name);
+
+    let client = reqwest::Client::builder()
+        .user_agent(concat!("vpsagent/", env!("CARGO_PKG_VERSION")))
+        .build()?;
+    let bytes = client
+        .get(&tarball_url)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("не удалось скачать: {e}"))?
+        .bytes()
+        .await
+        .map_err(|e| anyhow::anyhow!("не удалось прочитать тело: {e}"))?;
+    std::fs::write(&tarball_path, &bytes)?;
+
+    // 4. Проверка SHA256 (если доступен).
+    if let Some(url) = checksum_url {
+        eprintln!("проверяю SHA256…");
+        let expected = client
+            .get(&url)
+            .send()
+            .await?
+            .text()
+            .await
+            .ok()
+            .and_then(|t| t.split_whitespace().next().map(|s| s.to_string()));
+        if let Some(exp) = expected {
+            let actual = sha256_hex(&bytes);
+            if exp != actual {
+                std::fs::remove_dir_all(&tmpdir).ok();
+                anyhow::bail!("несовпадение SHA256: ожидается {exp}, получено {actual}");
+            }
+            eprintln!("SHA256 OK");
+        } else {
+            eprintln!("[warn] не удалось получить контрольную сумму — пропускаю проверку");
+        }
+    }
+
+    // 5. Распаковать бинарь во временный файл, атомарно заменить текущий.
+    let exe = std::env::current_exe()?;
+    eprintln!("устанавливаю в {}…", exe.display());
+
+    // tar.gz содержит файл 'vpsagent' — распакуем в tmpdir.
+    let output = std::process::Command::new("tar")
+        .arg("-xzf")
+        .arg(&tarball_path)
+        .arg("-C")
+        .arg(&tmpdir)
+        .arg("vpsagent")
+        .output()
+        .map_err(|e| anyhow::anyhow!("не удалось распаковать (нужен tar): {e}"))?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "tar завершился с ошибкой: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let extracted = tmpdir.join("vpsagent");
+    if !extracted.exists() {
+        anyhow::bail!("распакованный бинарь не найден: {}", extracted.display());
+    }
+
+    // Атомарная замена: на Unix можно перезаписать запущенный бинарь (файл
+    // занят, но inode остаётся; новый запуск подхватит новый код). Копируем
+    // extracted → exe, старый inode живёт пока процесс выполняется.
+    let exe = std::env::current_exe()?;
+    eprintln!("устанавливаю в {}…", exe.display());
+    std::fs::copy(&extracted, &exe)
+        .map_err(|e| anyhow::anyhow!("не удалось заменить бинарь (попробуйте под sudo): {e}"))?;
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755))?;
+    std::fs::remove_dir_all(&tmpdir).ok();
+
+    eprintln!("обновлено: v{current} → v{latest}");
+    eprintln!("перезапустите vpsagent, чтобы использовать новую версию.");
+    Ok(())
+}
+
+/// Простейшее сравнение semver: `latest > current`? (major.minor.patch).
+fn version_is_newer(latest: &str, current: &str) -> bool {
+    let parse = |s: &str| -> Vec<u64> {
+        s.split('.')
+            .filter_map(|p| p.split('-').next().and_then(|n| n.parse().ok()))
+            .collect()
+    };
+    let l = parse(latest);
+    let c = parse(current);
+    for i in 0..l.len().max(c.len()) {
+        let lv = l.get(i).copied().unwrap_or(0);
+        let cv = c.get(i).copied().unwrap_or(0);
+        if lv > cv {
+            return true;
+        }
+        if lv < cv {
+            return false;
+        }
+    }
+    false
+}
+
+/// SHA256 в hex — через внешний shasum/sha256sum (portable, без SHA-крейта).
+/// Возвращает пустую строку, если ни один инструмент не доступен.
+fn sha256_hex(bytes: &[u8]) -> String {
+    for (cmd, args) in [("shasum", vec!["-a", "256"]), ("sha256sum", vec![])] {
+        if let Ok(mut child) = std::process::Command::new(cmd)
+            .args(&args)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            if let Some(mut stdin) = child.stdin.take() {
+                use std::io::Write;
+                let _ = stdin.write_all(bytes);
+            }
+            if let Ok(output) = child.wait_with_output() {
+                if let Ok(s) = std::str::from_utf8(&output.stdout) {
+                    return s.split_whitespace().next().unwrap_or("").to_string();
+                }
+            }
+        }
+    }
+    String::new()
 }
 
 /// Headless-прогон: убедиться что демон работает, создать сессию, отправить задачу,

@@ -203,6 +203,14 @@ impl InitState {
                     self.status = "модель не может быть пустой".into();
                     return;
                 }
+                // Гарантируем, что default_model есть в списке models эндпоинта.
+                // Критично для Custom (models пуст — см. build_endpoint) и для
+                // случая выбора модели не из списка реестра: endpoint_for_model
+                // ищет эндпоинт по списку models, без этого запись → None →
+                // «модель не найдена в конфиге» при спавне агента.
+                if !self.models.iter().any(|m| m == &self.default_model) {
+                    self.models.push(self.default_model.clone());
+                }
                 self.step = 3;
                 self.done = true;
             }

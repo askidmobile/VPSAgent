@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 use uuid::Uuid;
-use vpsagent_core::{Event, JsonRpc, Request, Response};
+use vpsagent_core::{Event, EventKind, JsonRpc, Request, Response};
 
 /// RPC-клиент демона.
 ///
@@ -125,6 +125,23 @@ impl RpcClient {
             };
             if let Some(ev) = rpc.event {
                 self.note_event(&ev);
+                on_event(ev);
+            } else if let Some(err) = rpc.error {
+                // Ответ-ошибка на fire-and-forget `send` (например MessageSend):
+                // request() не читает ответ, а drain_events держит read-half, поэтому
+                // ошибка демона («модель не найдена в конфиге» и т.п.) иначе молча
+                // осталась бы в буфере. Сурфейсим как синтетический EventKind::Error,
+                // который TUI/headless уже умеют рендерить. seq=0 / session_id=nil —
+                // этот Event не пишется в БД (формируется на стороне клиента).
+                let ev = Event {
+                    seq: 0,
+                    session_id: Uuid::nil(),
+                    kind: EventKind::Error {
+                        agent_id: None,
+                        message: err.message,
+                    },
+                    created_at: chrono::Utc::now(),
+                };
                 on_event(ev);
             }
         }

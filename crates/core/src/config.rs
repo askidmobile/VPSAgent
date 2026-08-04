@@ -280,4 +280,33 @@ mod tests {
         let paths = paths.or_default_dirs(&config_path);
         assert_eq!(paths.log_file, PathBuf::from("/tmp/vps/daemon.log"));
     }
+
+    /// `endpoint_for_model` находит эндпоинт по модели из списка `models`
+    /// и возвращает None для отсутствующей. Это контракт, на который опирается
+    /// init-мастер (модель должна попасть в `models` эндпоинта при сохранении).
+    #[test]
+    fn endpoint_for_model_finds_custom() {
+        let mut config = Config::default();
+        let custom = ModelEndpoint {
+            name: "kimi".into(),
+            kind: EndpointKind::OpenaiCompat,
+            base_url: "https://api.moonshot.ai/v1".into(),
+            api_key_ref: "kimi".into(),
+            models: vec!["kimi-k2".into()],
+        };
+        config.endpoints.push(custom);
+
+        let found = config.endpoint_for_model("kimi-k2");
+        assert!(
+            found.is_some(),
+            "модель из списка models должна находится"
+        );
+        assert_eq!(found.unwrap().name, "kimi");
+
+        let missing = config.endpoint_for_model("несуществующая-модель");
+        assert!(
+            missing.is_none(),
+            "модель не из списка должна давать None (иначе агент не спавнится)"
+        );
+    }
 }

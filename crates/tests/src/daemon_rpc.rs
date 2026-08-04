@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use vpsagent_core::{Config, Request, Response};
+use vpsagent_core::{Config, EventKind, Request, Response};
 use vpsagent_daemon::{DaemonLock, EventBus, RpcServer, SessionManager};
 use vpsagent_storage::Storage;
 
@@ -150,6 +150,90 @@ async fn rpc_session_create_list_attach() {
     }
 
     // Останавливаем сервер.
+    server_handle.abort();
+    let _ = std::fs::remove_file(&socket);
+    let _ = std::fs::remove_file(&db);
+}
+
+/// Ошибка fire-and-forget `send` (например MessageSend на несуществующей
+/// сессии) должна сурфейситься через `drain_events` как `EventKind::Error`.
+/// Иначе (до фикса) ответ-ошибка молча остаётся в read-буфере клиента, и
+/// пользователь не видит «модель не найдена» и подобные ошибки демона.
+#[tokio::test]
+async fn rpc_message_send_error_surfaced() {
+    let socket = tmp_socket_path();
+    let db = tmp_db_path();
+    let _ = std::fs::remove_file(&socket);
+
+    let mut config = Config::default();
+    config.paths.socket = socket.clone();
+    config.paths.db = db.clone();
+    let config = std::sync::Arc::new(config);
+
+    let storage = Storage::open(&config.paths.db).await.unwrap();
+    let bus = EventBus::new();
+    let manager = SessionManager::new(storage.clone(), config.clone(), bus.clone());
+    let shutdown = tokio_util::sync::CancellationToken::new();
+    let server = Arc::new(RpcServer::new(
+        manager,
+        storage,
+        bus,
+        std::process::id(),
+        shutdown,
+    ));
+    let socket_clone = socket.clone();
+    let server_handle = tokio::spawn(async move { server.serve(&socket_clone).await });
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    use vpsagent_daemon::RpcClient;
+    use vpsagent_core::Id;
+    let client = RpcClient::connect(&socket).await.unwrap();
+
+    // MessageSend на несуществующей сессии → демон вернёт Response::Error
+    // (send_message → list_agents/get_session падает). send() — fire-and-forget,
+    // ответ НЕ читается; ошибка должна всплыть через drain_events.
+    client
+        .send(&Request::MessageSend {
+            session_id: Id::nil(),
+            text: "привет".into(),
+            target: None,
+        })
+        .await
+        .unwrap();
+
+    // Собираем события до 1 секунды: ждём синтетический EventKind::Error.
+    use std::sync::Mutex as StdMutex;
+    let errors = std::sync::Arc::new(StdMutex::new(Vec::<String>::new()));
+    let errors_clone = errors.clone();
+    let drain_handle = tokio::spawn(async move {
+        let _ = client
+            .drain_events(move |ev| {
+                if let EventKind::Error { message, .. } = ev.kind {
+                    errors_clone.lock().unwrap().push(message);
+                }
+            })
+            .await;
+    });
+
+    // Poll до 1 с: drain_events блокирующая, но spawn даёт параллельность.
+    for _ in 0..20 {
+        if !errors.lock().unwrap().is_empty() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    drain_handle.abort();
+
+    let errs = errors.lock().unwrap().clone();
+    assert!(
+        !errs.is_empty(),
+        "ошибка MessageSend должна сурфейситься через drain_events"
+    );
+    assert!(
+        errs.iter().any(|m| m.contains("не найдена") || !m.is_empty()),
+        "ожидал осмысленное сообщение об ошибке, got {errs:?}"
+    );
+
     server_handle.abort();
     let _ = std::fs::remove_file(&socket);
     let _ = std::fs::remove_file(&db);

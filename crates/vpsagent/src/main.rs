@@ -611,15 +611,34 @@ async fn run_upgrade(check: bool, force: bool) -> Result<()> {
         anyhow::bail!("распакованный бинарь не найден: {}", extracted.display());
     }
 
-    // Атомарная замена: на Unix можно перезаписать запущенный бинарь (файл
-    // занят, но inode остаётся; новый запуск подхватит новый код). Копируем
-    // extracted → exe, старый inode живёт пока процесс выполняется.
+    // Атомарная замена бинаря. На Linux fs::copy поверх запущенного бинаря
+    // падает с ETXTBSY ("Text file busy"). Используем rename-стратегию:
+    //   1. extracted → exe.new (рядом с exe, та же файловая система)
+    //   2. exe → exe.bak (освобождаем имя; старый inode живёт, пока процесс
+    //      выполняется — на Unix это безопасно)
+    //   3. exe.new → exe (атомарный rename на целевое место)
+    //   4. удаляем exe.bak
+    // Если exe.bak остался от прошлого раза — удаляем заранее.
     let exe = std::env::current_exe()?;
     eprintln!("устанавливаю в {}…", exe.display());
-    std::fs::copy(&extracted, &exe)
-        .map_err(|e| anyhow::anyhow!("не удалось заменить бинарь (попробуйте под sudo): {e}"))?;
+    let exe_new = exe.with_extension("new");
+    let exe_bak = exe.with_extension("bak");
+    std::fs::remove_file(&exe_bak).ok();
+    std::fs::rename(&extracted, &exe_new)
+        .map_err(|e| anyhow::anyhow!("не удалось подготовить новый бинарь: {e}"))?;
+    std::fs::rename(&exe, &exe_bak).map_err(|e| {
+        // Если не вышло освободить exe — откатываем: возвращаем exe.new в tmp.
+        let _ = std::fs::rename(&exe_new, &extracted);
+        anyhow::anyhow!("не удалось освободить текущий бинарь (попробуйте под sudo): {e}")
+    })?;
+    std::fs::rename(&exe_new, &exe).map_err(|e| {
+        // Откат: возвращаем старый бинарь на место.
+        let _ = std::fs::rename(&exe_bak, &exe);
+        anyhow::anyhow!("не удалось установить новый бинарь: {e}")
+    })?;
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755))?;
+    std::fs::remove_file(&exe_bak).ok();
     std::fs::remove_dir_all(&tmpdir).ok();
 
     eprintln!("обновлено: v{current} → v{latest}");
